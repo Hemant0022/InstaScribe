@@ -11,7 +11,7 @@ import seaborn as sns
 from wordcloud import WordCloud
 from streamlit_option_menu import option_menu
 
-st.set_page_config(page_title="InfluenceIQ", page_icon="⚡",
+st.set_page_config(page_title="InstaScribe", page_icon="📱",
                    layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
@@ -237,14 +237,14 @@ with st.sidebar:
     st.markdown(
         '<div style="padding:.8rem 0 1.2rem">'
         '<div style="font-size:1.25rem;font-weight:700;color:#e8eaf6">'
-        '⚡ Influence<span style="color:#4f8ef7;font-weight:300">IQ</span></div>'
+        '📱 Insta<span style="color:#4f8ef7;font-weight:300">Scribe</span></div>'
         '<div style="font-size:10px;color:#3a4060;text-transform:uppercase;'
         'letter-spacing:.1em;margin-top:2px">AI Influencer Intelligence</div></div>',
         unsafe_allow_html=True)
 
     st.markdown("**🎛 Filters**")
     st.markdown(
-        '<div style="font-size:10px;color:#3a4060;margin:-6px 0 10px;line-height:1.55">'
+        '<div style="font-size:10px;color:#FBF7FF;margin:-6px 0 10px;line-height:1.55">'
         'Empty = all data shown. Pick values to filter.</div>',
         unsafe_allow_html=True)
     st.markdown("---")
@@ -321,9 +321,11 @@ st.markdown(
     f'padding:12px 20px 10px;margin-bottom:1.2rem;">'
     f'<div style="display:flex;align-items:center;justify-content:space-between;'
     f'flex-wrap:wrap;gap:8px;">'
-    f'<div><span style="font-size:1.4rem;font-weight:700;color:#e8eaf6">⚡ InfluenceIQ</span>'
-    f'<span style="font-size:.8rem;color:#5c6488;margin-left:10px">'
-    f'AI Influencer Intelligence Dashboard</span></div>'
+    f'<div style="display:flex;flex-direction:column;">'
+    f'<div style="font-size:1.25rem;font-weight:700;color:#e8eaf6">'
+    f'📱 Insta<span style="color:#B77CF7;font-weight:300">Scribe</span></div>'
+    f'<div style="font-size:10px;color:#FBF7FF;text-transform:uppercase;'
+    f'letter-spacing:.1em;margin-top:2px">AI Influencer Intelligence Dashboard</div></div>'
     f'<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:#3a4060;'
     f'border:1px solid #1c2030;padding:2px 10px;border-radius:20px;">'
     f'{"🔍 " if is_filtered else "📊 "}{len(leads):,} / {len(leads_full):,} records</span>'
@@ -1059,9 +1061,9 @@ elif page == "About":
     <div class="about-hero">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;">
         <div>
-          <div style="font-size:1.6rem;font-weight:700;color:#e8eaf6;margin-bottom:6px;">⚡ InfluenceIQ</div>
+          <div style="font-size:1.6rem;font-weight:700;color:#e8eaf6;margin-bottom:6px;">📱 InstaScribe</div>
           <div style="font-size:13px;color:#9ba3c4;max-width:640px;line-height:1.7;">
-            InfluenceIQ is an advanced <b style="color:#e8eaf6">AI-powered influencer intelligence platform</b>
+            InstaScribe is an advanced <b style="color:#e8eaf6">AI-powered influencer intelligence platform</b>
             built with Streamlit and Python. It helps founders, agencies, and marketing teams detect
             high-quality influencer leads, analyse engagement authenticity, track individual posts, and
             prioritise outreach — all powered by real CSV data.
@@ -1205,7 +1207,7 @@ elif page == "About":
 # ── FOOTER ────────────────────────────────────────────────
 st.markdown("---")
 st.markdown(
-    '<div style="text-align:center;font-size:11px;color:#2a2f45;'
+    '<div style="text-align:center;font-size:11px;color:#FBF7FF;'
     'font-family:\'DM Mono\',monospace">'
-    'InfluenceIQ · AI Influencer Intelligence · Streamlit + Plotly + Seaborn</div>',
+    'InstaScribe · AI Influencer Intelligence · Streamlit + Plotly + Seaborn</div>',
     unsafe_allow_html=True)
