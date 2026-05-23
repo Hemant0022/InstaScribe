@@ -1,6 +1,6 @@
-# InfluenceIQ
+# InstaScribe
 
-InfluenceIQ is a Streamlit dashboard for influencer intelligence and lead scoring. It combines profile-level metrics, post analytics, lead prioritisation, and a searchable post inspector in a dark, card-based UI.
+InstaScribe is a Streamlit dashboard for influencer intelligence and lead scoring. It combines profile-level metrics, post analytics, lead prioritisation, and a searchable post inspector in a dark, card-based UI.
 
 ## Features
 
@@ -42,17 +42,14 @@ If you are using the virtual environment in this project on Windows:
 
 ```powershell
 & .\myenv\Scripts\Activate.ps1
-streamlit run app1.py
+streamlit run app.py
 ```
 
 ## Project Structure
 
 ```text
 Project/
-	app1.py
 	app.py
-	file.py
-	project.py
 	requirements.txt
 	data/
 		category_dim.csv
