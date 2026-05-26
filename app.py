@@ -15,99 +15,310 @@ from streamlit_option_menu import option_menu
 st.set_page_config(page_title="InstaScribe", page_icon="📱",
                    layout="wide", initial_sidebar_state="expanded")
 
+# ══════════════════════════════════════════════════════════════════
+# COMBINED THEME: Option 1 (Gradient Glassmorphism) +
+#                 Option 4 (Creator Studio Purple/Pink)
+# ══════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
-html,body,[class*="css"]{font-family:'DM Sans',sans-serif;}
-.stApp{background:#0d0f14;}
-.block-container{padding:2.7rem 2.2rem 3rem;max-width:1280px;}
-.app-header{margin-top:0.55rem;margin-bottom:1rem;position:relative;z-index:1;}
-.app-header-card{background:#141720;border:1px solid #2a2f45;border-radius:12px;
-    padding:10px 18px 9px;}
-[data-testid="stSidebar"]{background:#0f1117;border-right:1px solid #1e2535;}
-[data-testid="stSidebar"] *{color:#9ba3c4 !important;}
-section[data-testid="stSidebar"] label{
-  font-size:0.7rem !important;text-transform:uppercase;
-  letter-spacing:.08em;color:#5c6488 !important;}
-.kpi{background:#141720;border:1px solid #2a2f45;border-radius:12px;
-  padding:20px 22px;position:relative;overflow:hidden;}
-.kpi::after{content:'';position:absolute;top:0;right:0;width:52px;height:52px;
-  border-radius:0 12px 0 52px;opacity:.12;background:var(--ac,#4f8ef7);}
-.kpi-label{font-size:10px;color:#5c6488;font-weight:500;letter-spacing:.6px;
-  text-transform:uppercase;margin-bottom:10px;}
-.kpi-value{font-family:'DM Mono',monospace;font-size:28px;font-weight:600;
-  line-height:1;color:var(--ac,#4f8ef7);}
-.kpi-sub{font-size:11px;color:#5c6488;margin-top:6px;}
-.sec{font-size:10px;font-weight:600;color:#5c6488;text-transform:uppercase;
-  letter-spacing:.7px;padding-bottom:8px;border-bottom:1px solid #1c2030;
-  margin-bottom:16px;margin-top:28px;}
-.insight{background:#141720;border:1px solid #2a2f45;
-  border-left:3px solid var(--ac,#4f8ef7);border-radius:10px;
-  padding:14px 16px;font-size:13px;color:#9ba3c4;line-height:1.6;}
-.insight b{color:#e8eaf6;}
-.chip{display:inline-block;background:rgba(79,142,247,.12);color:#4f8ef7;
-  font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;
-  border:1px solid rgba(79,142,247,.25);margin:2px 3px 2px 0;}
-.pb-wrap{margin-bottom:12px;}
-.pb-row{display:flex;justify-content:space-between;font-size:12px;
-  color:#9ba3c4;margin-bottom:4px;}
-.pb-val{font-family:'DM Mono',monospace;font-size:12px;}
-.pb-track{height:5px;background:#1c2030;border-radius:3px;overflow:hidden;}
-.pb-fill{height:100%;border-radius:3px;}
-.post-banner{background:#141720;border:1px solid #2a2f45;border-radius:14px;
-  padding:22px 26px;margin-bottom:18px;}
-.post-banner-id{font-family:'DM Mono',monospace;font-size:11px;color:#4f8ef7;
-  letter-spacing:.05em;margin-bottom:4px;}
-.post-banner-handle{font-size:1.1rem;font-weight:600;color:#e8eaf6;margin-bottom:2px;}
-.post-banner-meta{font-size:12px;color:#5c6488;}
-.stat-pill{display:inline-flex;align-items:center;gap:6px;background:#1c2030;
-  border:1px solid #2a2f45;border-radius:8px;padding:6px 12px;
-  font-size:12px;color:#9ba3c4;margin:3px 4px 3px 0;}
-.stat-pill b{color:var(--pc,#4f8ef7);font-family:'DM Mono',monospace;}
-.desc-box{background:#141720;border:1px solid #2a2f45;border-left:3px solid #4f8ef7;
-  border-radius:10px;padding:12px 16px;font-size:12px;color:#9ba3c4;
-  line-height:1.65;margin-bottom:14px;}
-.desc-box b{color:#e8eaf6;}
-.about-hero{background:linear-gradient(135deg,#141720 0%,#0f1825 100%);
-  border:1px solid #2a2f45;border-radius:16px;padding:32px 36px;margin-bottom:20px;}
-.about-card{background:#141720;border:1px solid #2a2f45;border-radius:14px;
-  padding:24px 26px;height:100%;}
-.about-card-green{border-left:4px solid #34d399;}
-.about-card-blue {border-left:4px solid #4f8ef7;}
-.about-card-amber{border-left:4px solid #fbbf24;}
-.about-card-pink {border-left:4px solid #f472b6;}
-.about-card-purple{border-left:4px solid #a78bfa;}
-.about-title{font-size:13px;font-weight:600;color:#e8eaf6;margin-bottom:12px;
-  display:flex;align-items:center;gap:8px;}
-.about-tag{display:inline-block;font-family:'DM Mono',monospace;font-size:11px;
-  background:#1c2030;color:#a3c4fd;padding:1px 7px;border-radius:4px;
-  border:1px solid #2a2f45;margin:1px 2px;}
-.about-li{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;
-  font-size:13px;color:#9ba3c4;line-height:1.6;}
-.about-li-dot{width:6px;height:6px;border-radius:50%;margin-top:6px;
-  flex-shrink:0;background:var(--dot,#4f8ef7);}
-.about-divider{border:none;border-top:1px solid #1c2030;margin:8px 0 16px;}
-[data-testid="stDataFrame"] *{
-  font-family:'DM Mono',monospace !important;font-size:12px !important;}
+
+/* ── BASE ─────────────────────────────────────────────────── */
+html, body, [class*="css"] {
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* Option 1 × Option 4 hybrid: deep purple-navy glassmorphism */
+.stApp {
+  background: linear-gradient(135deg, #0e0814 0%, #0d1117 45%, #130820 100%);
+  min-height: 100vh;
+}
+
+/* Ambient orbs behind everything */
+.stApp::before {
+  content: '';
+  position: fixed; top: -120px; right: -120px;
+  width: 500px; height: 500px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(168,85,247,0.09) 0%, transparent 65%);
+  z-index: 0;
+}
+.stApp::after {
+  content: '';
+  position: fixed; bottom: -100px; left: -100px;
+  width: 420px; height: 420px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(236,72,153,0.07) 0%, transparent 65%);
+  z-index: 0;
+}
+
+.block-container { padding: 3.1rem 2rem 3rem; max-width: 1320px; position: relative; z-index: 1; }
+
+/* ── SIDEBAR ─────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+  background: #0e0814;
+  border-right: 1px solid #2a1040;
+}
+[data-testid="stSidebar"] * { color: #9b7ec8 !important; }
+section[data-testid="stSidebar"] label {
+  font-size: 0.7rem !important;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #6b4fa0 !important;
+}
+[data-testid="stSidebar"] .stSlider > div > div > div { background: #2d1555 !important; }
+[data-testid="stSidebar"] .stSlider > div > div > div > div { background: linear-gradient(90deg,#a855f7,#ec4899) !important; }
+/* Sidebar multiselect text: category + lead quality */
+[data-testid="stSidebar"] [data-baseweb="select"] * {
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] [data-baseweb="tag"] * {
+    color: #ffffff !important;
+}
+[role="listbox"] [role="option"] * {
+    color: #ffffff !important;
+}
+
+/* ── HEADER CARD — glassmorphism + IG gradient border ─────── */
+.app-header { margin-top: 0.95rem; margin-bottom: 1rem; }
+.app-header-card {
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(168,85,247,0.22);
+  border-radius: 16px;
+  padding: 12px 20px 11px;
+  position: relative;
+  overflow: hidden;
+}
+.app-header-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(168,85,247,0.6), rgba(236,72,153,0.6), transparent);
+}
+.app-logo-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg,#a855f7,#ec4899);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; margin-right: 10px; vertical-align: middle;
+}
+.app-title {
+  font-size: 1.2rem; font-weight: 700; color: #f0e6ff; vertical-align: middle;
+}
+.app-subtitle {
+  font-size: 10px; color: #6b4fa0; text-transform: uppercase;
+  letter-spacing: .12em; margin-top: 2px;
+}
+
+/* ── KPI CARDS — Creator Studio style ────────────────────── */
+.kpi {
+  background: linear-gradient(135deg,#1a0d2e,#150a24);
+  border: 1px solid #2d1555;
+  border-radius: 16px;
+  padding: 18px 20px;
+  position: relative; overflow: hidden;
+}
+/* Top gradient line */
+.kpi::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--ac,#a855f7), var(--ac2,#ec4899));
+}
+/* Glow orb in corner */
+.kpi::after {
+  content: ''; position: absolute; top: -20px; right: -20px;
+  width: 70px; height: 70px; border-radius: 50%;
+  background: radial-gradient(circle, var(--ac,#a855f7) 0%, transparent 70%);
+  opacity: 0.18;
+}
+.kpi-label {
+  font-size: 10px; color: #6b4fa0; font-weight: 600;
+  letter-spacing: .7px; text-transform: uppercase; margin-bottom: 10px;
+}
+.kpi-value {
+  font-family: 'DM Mono', monospace; font-size: 26px; font-weight: 700;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--ac,#a855f7), var(--ac2,#ec4899));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.kpi-sub { font-size: 11px; color: #6b4fa0; margin-top: 7px; }
+/* Progress bar at bottom */
+.kpi-bar {
+  height: 3px; border-radius: 2px; margin-top: 12px;
+  background: linear-gradient(90deg, var(--ac,#a855f7), var(--ac2,#ec4899));
+  width: var(--bar, 70%);
+}
+
+/* ── SECTION HEADERS ─────────────────────────────────────── */
+.sec {
+  font-size: 10px; font-weight: 700; color: #6b4fa0;
+  text-transform: uppercase; letter-spacing: .8px;
+  padding-bottom: 8px; margin-bottom: 16px; margin-top: 28px;
+  border-bottom: 1px solid #2a1040;
+  position: relative;
+}
+.sec::after {
+  content: '';
+  position: absolute; bottom: -1px; left: 0;
+  width: 48px; height: 1px;
+  background: linear-gradient(90deg,#a855f7,#ec4899);
+}
+
+/* ── INSIGHT CARDS — glassmorphism variant ────────────────── */
+.insight {
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(168,85,247,0.18);
+  border-left: 3px solid var(--ac,#a855f7);
+  border-radius: 12px;
+  padding: 14px 16px; font-size: 13px; color: #b09ad4; line-height: 1.6;
+}
+.insight b { color: #e8d5ff; }
+
+/* ── CHIPS / TAGS ─────────────────────────────────────────── */
+.chip {
+  display: inline-block;
+  background: rgba(168,85,247,.15); color: #d8b4fe;
+  font-size: 10px; font-weight: 500;
+  padding: 2px 9px; border-radius: 20px;
+  border: 1px solid rgba(168,85,247,.3);
+  margin: 2px 3px;
+}
+
+/* ── CATEGORY TAGS — Option 4 style ─────────────────────── */
+.cat-tag {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+  background: rgba(168,85,247,.12); color: #d8b4fe;
+  padding: 3px 10px; border-radius: 20px;
+  border: 1px solid rgba(168,85,247,.28);
+  margin: 2px 4px 2px 0;
+}
+
+/* ── PROGRESS BARS ────────────────────────────────────────── */
+.pb-wrap { margin-bottom: 12px; }
+.pb-row {
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: #9b7ec8; margin-bottom: 5px;
+}
+.pb-val { font-family: 'DM Mono', monospace; font-size: 12px; }
+.pb-track { height: 4px; background: #1e0d38; border-radius: 3px; overflow: hidden; }
+.pb-fill  { height: 100%; border-radius: 3px; }
+
+/* ── POST BANNER ─────────────────────────────────────────── */
+.post-banner {
+  background: linear-gradient(135deg,#1a0d2e,#150a24);
+  border: 1px solid #2d1555; border-radius: 16px;
+  padding: 22px 26px; margin-bottom: 18px;
+  position: relative; overflow: hidden;
+}
+.post-banner::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg,#a855f7,#ec4899);
+}
+.post-banner-id { font-family: 'DM Mono', monospace; font-size: 11px; color: #a855f7; letter-spacing: .05em; margin-bottom: 4px; }
+.post-banner-handle { font-size: 1.1rem; font-weight: 700; color: #f0e6ff; margin-bottom: 2px; }
+.post-banner-meta { font-size: 12px; color: #6b4fa0; }
+
+/* ── STAT PILLS ───────────────────────────────────────────── */
+.stat-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid #2d1555; border-radius: 8px;
+  padding: 6px 12px; font-size: 12px; color: #9b7ec8;
+  margin: 3px 4px;
+}
+.stat-pill b { color: var(--pc,#d8b4fe); font-family: 'DM Mono', monospace; }
+
+/* ── DESC BOX ─────────────────────────────────────────────── */
+.desc-box {
+  background: rgba(255,255,255,0.025);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(168,85,247,0.15);
+  border-left: 3px solid #a855f7;
+  border-radius: 10px; padding: 12px 16px;
+  font-size: 12px; color: #9b7ec8; line-height: 1.65; margin-bottom: 14px;
+}
+.desc-box b { color: #e8d5ff; }
+
+/* ── ABOUT CARDS ──────────────────────────────────────────── */
+.about-hero {
+  background: linear-gradient(135deg,#1a0d2e 0%,#0e0814 50%,#150a24 100%);
+  border: 1px solid #2a1040; border-radius: 18px;
+  padding: 32px 36px; margin-bottom: 20px;
+  position: relative; overflow: hidden;
+}
+.about-hero::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg,transparent,#a855f7,#ec4899,transparent);
+}
+.about-card {
+  background: linear-gradient(135deg,#1a0d2e,#150a24);
+  border: 1px solid #2d1555; border-radius: 16px;
+  padding: 22px 24px; height: 100%;
+}
+.about-card-green  { border-left: 4px solid #4ade80; }
+.about-card-blue   { border-left: 4px solid #818cf8; }
+.about-card-amber  { border-left: 4px solid #fbbf24; }
+.about-card-pink   { border-left: 4px solid #ec4899; }
+.about-card-purple { border-left: 4px solid #a855f7; }
+.about-title {
+  font-size: 13px; font-weight: 600; color: #e8d5ff;
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.about-tag {
+  display: inline-block; font-family: 'DM Mono',monospace; font-size: 11px;
+  background: rgba(168,85,247,.12); color: #c4b5fd;
+  padding: 1px 7px; border-radius: 4px; border: 1px solid #2d1555;
+  margin: 1px 2px;
+}
+.about-li { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; font-size: 13px; color: #9b7ec8; line-height: 1.6; }
+.about-li-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--dot,#a855f7); }
+.about-divider { border: none; border-top: 1px solid #2a1040; margin: 8px 0 16px; }
+
+/* ── GRADIENT DIVIDER ─────────────────────────────────────── */
+.grad-divider {
+  height: 1px; margin: 28px 0 8px;
+  background: linear-gradient(90deg, #a855f7, #ec4899, transparent);
+  border-radius: 2px;
+}
+
+/* ── DATAFRAME OVERRIDE ──────────────────────────────────── */
+[data-testid="stDataFrame"] * {
+  font-family: 'DM Mono', monospace !important;
+  font-size: 12px !important;
+}
+
+/* ── BUTTON ───────────────────────────────────────────────── */
+.stDownloadButton > button {
+  background: linear-gradient(135deg,#7e22ce,#be185d) !important;
+  color: #fff !important; border: none !important;
+  border-radius: 8px !important; font-size: 12px !important;
+}
+.stButton > button {
+  background: linear-gradient(135deg,#1a0d2e,#2d1555) !important;
+  color: #d8b4fe !important;
+  border: 1px solid #3d1f70 !important;
+  border-radius: 8px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
-CAT_CLR = {"tech":"#4f8ef7","fashion":"#f472b6","fitness":"#34d399",
-           "travel":"#a78bfa","food":"#fbbf24"}
-Q_CLR   = {"high":"#34d399","medium":"#fbbf24","low":"#f87171"}
+# ── COLOR PALETTES ─────────────────────────────────────────────
+CAT_CLR = {"tech":"#818cf8","fashion":"#ec4899","fitness":"#4ade80",
+           "travel":"#c084fc","food":"#fbbf24"}
+Q_CLR   = {"high":"#4ade80","medium":"#fbbf24","low":"#f87171"}
+
+# Plotly dark layout — purple tinted
 DL = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="DM Sans",color="#9ba3c4",size=12),
-    xaxis=dict(gridcolor="#1c2030",linecolor="#2a2f45",zeroline=False),
-    yaxis=dict(gridcolor="#1c2030",linecolor="#2a2f45",zeroline=False),
-    legend=dict(bgcolor="rgba(0,0,0,0)",bordercolor="#2a2f45",font=dict(size=11)),
-    margin=dict(l=24,r=24,t=40,b=24))
+    font=dict(family="DM Sans", color="#9b7ec8", size=12),
+    xaxis=dict(gridcolor="#1e0d38", linecolor="#2d1555", zeroline=False),
+    yaxis=dict(gridcolor="#1e0d38", linecolor="#2d1555", zeroline=False),
+    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#2d1555", font=dict(size=11)),
+    margin=dict(l=24, r=24, t=40, b=24))
 
 def dark(fig, h=300):
     fig.update_layout(**DL, height=h)
     return fig
 
-# ── DATA LOADING ──────────────────────────────────────────
+# ── DATA LOADING ───────────────────────────────────────────────
 def _data_dir():
     try:    sd = os.path.dirname(os.path.abspath(__file__))
     except: sd = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -179,6 +390,19 @@ def load_data():
         inf["Lead_Score"], bins=[-np.inf, 30, 60, np.inf],
         labels=["low","medium","high"]).astype(str)
 
+    def _category_lead_quality(group):
+        if len(group) < 3:
+            return pd.Series(["medium"] * len(group), index=group.index)
+        ranked = group["Lead_Score"].rank(method="first")
+        return pd.qcut(ranked, q=3, labels=["low", "medium", "high"]).astype(str)
+
+    if "Category_Name" in inf.columns:
+        inf["Category_Lead_Quality"] = (
+            inf.groupby("Category_Name", group_keys=False).apply(_category_lead_quality)
+        )
+    else:
+        inf["Category_Lead_Quality"] = inf["Lead_Quality"]
+
     def _tier(f):
         if f < 10_000:    return "Nano (<10K)"
         if f < 100_000:   return "Micro (10K-100K)"
@@ -198,7 +422,7 @@ def load_data():
 
 leads_full, posts_full = load_data()
 
-# ── HELPERS ───────────────────────────────────────────────
+# ── HELPERS ────────────────────────────────────────────────────
 def fmt(n):
     try: n = float(n)
     except: return str(n)
@@ -224,19 +448,20 @@ def safe_float(v, default=0.0):
 
 def sentiment_code(score):
     score = safe_float(score, 0.0)
-    if score > 0.1:
-        return "Positive", "#34d399"
-    if score < -0.1:
-        return "Negative", "#f87171"
+    if score > 0.1:  return "Positive", "#4ade80"
+    if score < -0.1: return "Negative", "#f87171"
     return "Neutral", "#fbbf24"
 
-def kpi(label, value, sub="", ac="#4f8ef7"):
-    return (f'<div class="kpi" style="--ac:{ac}">'
+def kpi(label, value, sub="", ac="#a855f7", ac2="#ec4899", bar=70):
+    return (f'<div class="kpi" style="--ac:{ac};--ac2:{ac2};--bar:{bar}%">'
             f'<div class="kpi-label">{label}</div>'
             f'<div class="kpi-value">{value}</div>'
-            f'<div class="kpi-sub">{sub}</div></div>')
+            f'<div class="kpi-sub">{sub}</div>'
+            f'<div class="kpi-bar"></div>'
+            f'</div>')
 
-def sec(t): st.markdown(f'<div class="sec">{t}</div>', unsafe_allow_html=True)
+def sec(t):
+    st.markdown(f'<div class="sec">{t}</div>', unsafe_allow_html=True)
 
 def pb(label, val_s, pct, color):
     return (f'<div class="pb-wrap"><div class="pb-row">'
@@ -249,29 +474,36 @@ def pb(label, val_s, pct, color):
 def desc(text):
     st.markdown(f'<div class="desc-box">{text}</div>', unsafe_allow_html=True)
 
-# ── SIDEBAR ───────────────────────────────────────────────
+def grad_divider():
+    st.markdown('<div class="grad-divider"></div>', unsafe_allow_html=True)
+
+# ── SIDEBAR ────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
-        '<div style="padding:.8rem 0 1.2rem">'
-        '<div style="font-size:1.25rem;font-weight:700;color:#e8eaf6">'
-        '📱 Insta<span style="color:#B77CF7;font-weight:300">Scribe</span></div>'
-        '<div style="font-size:10px;color:#FBF7FF;text-transform:uppercase;'
-        'letter-spacing:.1em;margin-top:2px">AI Influencer Intelligence</div></div>',
+        '<div style="padding:.8rem 0 1.4rem">'
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+        '<div style="width:32px;height:32px;border-radius:9px;'
+        'background:linear-gradient(135deg,#a855f7,#ec4899);'
+        'display:flex;align-items:center;justify-content:center;font-size:16px">📱</div>'
+        '<div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#f0e6ff">InstaScribe</div>'
+        '<div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;'
+        'letter-spacing:.1em">Creator Intelligence</div>'
+        '</div></div></div>',
         unsafe_allow_html=True)
 
-    st.markdown("**🎛 Filters**")
-    st.markdown(
-        '<div style="font-size:10px;color:#FBF7FF;margin:-6px 0 10px;line-height:1.55">'
-        'Empty = all data shown. Pick values to filter.</div>',
-        unsafe_allow_html=True)
+    st.markdown('<div style="font-size:15px;font-weight:600;color:#a855f7;'
+                'text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">🎛 Filters</div>',
+                unsafe_allow_html=True)
+    # st.markdown(
+    #     '<div style="font-size:10px;color:#6b4fa0;margin:-2px 0 10px;line-height:1.55">'
+    #     'Empty = all data shown.</div>', unsafe_allow_html=True)
     st.markdown("---")
 
-    all_cats  = sorted(leads_full["Category_Name"].dropna().unique()) \
-                if "Category_Name" in leads_full.columns else []
-    sel_cats  = st.multiselect("📂 Category", all_cats, default=[],
-                                placeholder="All categories")
-    sel_qual  = st.multiselect("🎯 Lead Quality", ["high","medium","low"], default=[],
-                                placeholder="All quality tiers")
+    all_cats = sorted(leads_full["Category_Name"].dropna().unique()) \
+               if "Category_Name" in leads_full.columns else []
+    sel_cats = st.multiselect("📂 Category", all_cats, default=[], placeholder="All categories")
+    sel_qual = st.multiselect("🎯 Lead Quality", ["high","medium","low"], default=[], placeholder="All quality tiers")
 
     er_lo = float(leads_full["Engagement_Rate"].min())
     er_hi = float(leads_full["Engagement_Rate"].max())
@@ -285,25 +517,26 @@ with st.sidebar:
     st.markdown("---")
 
     all_tiers = sorted(leads_full["Follower_Tier"].unique())
-    sel_tiers = st.multiselect("🏷 Follower Tier", all_tiers, default=[],
-                                placeholder="All tiers")
+    sel_tiers = st.multiselect("🏷 Follower Tier", all_tiers, default=[], placeholder="All tiers")
 
     d_lo = posts_full["Post_Date"].dropna().min().date()
     d_hi = posts_full["Post_Date"].dropna().max().date()
     sel_dates = st.date_input("📅 Date Range", (d_lo, d_hi))
 
     all_yrs = sorted(posts_full["Year"].dropna().astype(int).unique())
-    sel_yrs = st.multiselect("📅 Year", all_yrs, default=[],
-                              placeholder="All years")
+    sel_yrs = st.multiselect("📅 Year", all_yrs, default=[], placeholder="All years")
 
     st.markdown("---")
     if st.button("↺ Reset Filters", use_container_width=True):
         st.rerun()
 
-# ── FILTER FUNCTIONS ──────────────────────────────────────
+# ── FILTER FUNCTIONS ───────────────────────────────────────────
 def fl(d):
     if sel_cats and "Category_Name" in d.columns:
         d = d[d["Category_Name"].isin(sel_cats)]
+    if sel_cats and "Category_Lead_Quality" in d.columns:
+        d = d.copy()
+        d["Lead_Quality"] = d["Category_Lead_Quality"]
     if sel_qual:
         d = d[d["Lead_Quality"].isin(sel_qual)]
     d = d[d["Engagement_Rate"].between(*sel_er)]
@@ -328,42 +561,53 @@ posts = fp(posts_full.copy())
 is_filtered = (bool(sel_cats) or bool(sel_qual) or bool(sel_tiers) or bool(sel_yrs)
                or sel_er!=(er_lo,er_hi) or sel_fo!=(fo_lo,fo_hi) or sel_score>0)
 
-# ── HEADER ────────────────────────────────────────────────
+# ── HEADER ─────────────────────────────────────────────────────
 chips = "".join(
     f'<span class="chip">{v}</span>'
     for v in list(sel_cats)+list(sel_qual)+list(sel_tiers)+list(sel_yrs))
 
+
+
 st.markdown(
     f'<div class="app-header">'
     f'<div class="app-header-card">'
-    f'<div style="display:flex;align-items:center;justify-content:space-between;'
-    f'flex-wrap:wrap;gap:8px;">'
-    f'<div style="display:flex;flex-direction:column;">'
-    f'<div style="font-size:1.25rem;font-weight:700;color:#e8eaf6">'
-    f'📱 Insta<span style="color:#B77CF7;font-weight:300">Scribe</span></div>'
-    f'<div style="font-size:10px;color:#FBF7FF;text-transform:uppercase;'
-    f'letter-spacing:.1em;margin-top:2px">AI Influencer Intelligence Dashboard</div></div>'
-    f'<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:#3a4060;'
-    f'border:1px solid #1c2030;padding:2px 10px;border-radius:20px;">'
+    f'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+    f'<div style="display:flex;align-items:center;gap:10px">'
+    f'<div class="app-logo-icon">📱</div>'
+    f'<div>'
+    f'<div class="app-title">InstaScribe</div>'
+    f'<div class="app-subtitle">Creator Intelligence Platform</div>'
+    f'</div></div>'
+    f'<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:#6b4fa0;'
+    f'border:1px solid #2d1555;padding:2px 10px;border-radius:20px;">'
     f'{"🔍 " if is_filtered else "📊 "}{len(leads):,} / {len(leads_full):,} records</span>'
     f'</div>'
+    # f'<div style="margin-top:8px">{cat_tags_html}</div>'
     f'{"<div style=margin-top:6px>"+chips+"</div>" if chips else ""}'
     f'</div></div>',
     unsafe_allow_html=True)
 
-# ── NAV ───────────────────────────────────────────────────
+# ── NAV ────────────────────────────────────────────────────────
 page = option_menu(None,
     ["Executive Overview","Lead Intelligence",
-     "Post Analytics","AI Lead Scoring","About"],
+     "Post Analytics","Lead Scoring","About"],
     icons=["bar-chart-fill","people-fill","chat-dots-fill","robot","info-circle-fill"],
     orientation="horizontal",
     styles={
-        "container":         {"background-color":"#141720","border":"1px solid #2a2f45",
-                              "border-radius":"10px","padding":"5px 10px"},
-        "nav-link":          {"font-size":"13px","color":"#9ba3c4",
-                              "border-radius":"8px","padding":"7px 14px"},
-        "nav-link-selected": {"background-color":"#1a3f8f","color":"#a3c4fd","font-weight":"500"},
-        "icon":              {"font-size":"13px"},
+        "container": {
+            "background": "linear-gradient(135deg,#1a0d2e,#150a24)",
+            "border": "1px solid #2d1555",
+            "border-radius": "12px", "padding": "5px 10px"
+        },
+        "nav-link": {
+            "font-size": "13px", "color": "#6b4fa0",
+            "border-radius": "8px", "padding": "7px 14px"
+        },
+        "nav-link-selected": {
+            "background": "linear-gradient(135deg,#7e22ce,#be185d)",
+            "color": "#fff", "font-weight": "600"
+        },
+        "icon": {"font-size": "13px"},
     })
 
 # ==========================================================
@@ -380,23 +624,27 @@ if page == "Executive Overview":
     eqr_raw = (leads["Engagement"] / leads["Follower_Count"].replace(0, np.nan)).mean()
     eqr_raw = 0.0 if (eqr_raw is None or (isinstance(eqr_raw, float) and np.isnan(eqr_raw))) else eqr_raw
     if eqr_raw > 0.10:
-        eqr_label = "Positive"; eqr_color = "#34d399"
+        eqr_label = "Positive"; eqr_color = "#4ade80"; eqr_c2 = "#22c55e"
         eqr_sub   = f"ratio {eqr_raw:.4f} · strong audience quality"
     elif eqr_raw >= 0.04:
-        eqr_label = "Neutral"; eqr_color = "#fbbf24"
+        eqr_label = "Neutral"; eqr_color = "#fbbf24"; eqr_c2 = "#f59e0b"
         eqr_sub   = f"ratio {eqr_raw:.4f} · average audience quality"
     else:
-        eqr_label = "Negative"; eqr_color = "#f87171"
+        eqr_label = "Negative"; eqr_color = "#f87171"; eqr_c2 = "#ef4444"
         eqr_sub   = f"ratio {eqr_raw:.4f} · weak audience quality"
 
     k1, k2, k3, k4 = st.columns(4, gap="large")
     k1.markdown(kpi("Total Influencers",   fmt(total),
-                    f"{n_cats} {'category' if n_cats==1 else 'categories'}",  "#4f8ef7"), unsafe_allow_html=True)
+                    f"{n_cats} {'category' if n_cats==1 else 'categories'}",
+                    "#a855f7", "#ec4899", 80), unsafe_allow_html=True)
     k2.markdown(kpi("Total Engagement",    fmt(t_eng),
-                    "across selected handles",                                  "#34d399"), unsafe_allow_html=True)
+                    "across selected handles",
+                    "#818cf8", "#6366f1", 95), unsafe_allow_html=True)
     k3.markdown(kpi("Avg Engagement Rate", f"{avg_er:.2f}%",
-                    "average across selection",                                 "#fbbf24"), unsafe_allow_html=True)
-    k4.markdown(kpi("Engagement Quality",  eqr_label, eqr_sub, eqr_color), unsafe_allow_html=True)
+                    "average across selection",
+                    "#c084fc", "#a855f7", 60), unsafe_allow_html=True)
+    k4.markdown(kpi("Engagement Quality",  eqr_label, eqr_sub,
+                    eqr_color, eqr_c2, 72), unsafe_allow_html=True)
 
     sec("🧠 Smart Insights")
     if total > 0 and "Category_Name" in leads.columns:
@@ -412,11 +660,11 @@ if page == "Executive Overview":
 
         i1, i2, i3 = st.columns(3)
         i1.markdown(
-            f'<div class="insight" style="--ac:#4f8ef7">'
+            f'<div class="insight" style="--ac:#818cf8">'
             f'📌 <b>{top_er.title()}</b> leads with the highest avg engagement rate '
             f'across {total:,} influencers in view.</div>', unsafe_allow_html=True)
         i2.markdown(
-            f'<div class="insight" style="--ac:#34d399">'
+            f'<div class="insight" style="--ac:#4ade80">'
             f'📡 <b>{top_fol.title()}</b> dominates follower reach — '
             f'best for brand awareness campaigns.</div>', unsafe_allow_html=True)
         i3.markdown(
@@ -428,15 +676,15 @@ if page == "Executive Overview":
         st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
         i4, i5, i6 = st.columns(3)
         i4.markdown(
-            f'<div class="insight" style="--ac:#a78bfa">'
+            f'<div class="insight" style="--ac:#c084fc">'
             f'🏷 Dominant tier: <b>{tier_top}</b>. '
             f'Avg lead score: <b>{avg_sc:.1f} / 100</b>.</div>', unsafe_allow_html=True)
         i5.markdown(
-            f'<div class="insight" style="--ac:#f472b6">'
+            f'<div class="insight" style="--ac:#ec4899">'
             f'💡 <b>{top_eqr.title()}</b> has the best engagement quality ratio — '
             f'most impactful audience per follower.</div>', unsafe_allow_html=True)
         i6.markdown(
-            f'<div class="insight" style="--ac:#34d399">'
+            f'<div class="insight" style="--ac:#4ade80">'
             f'⏳ <b>{med:,}</b> medium leads '
             f'({med/max(total,1)*100:.1f}%) in the nurture pipeline.</div>',
             unsafe_allow_html=True)
@@ -452,12 +700,12 @@ if page == "Executive Overview":
         fig = go.Figure(go.Scatter(
             x=monthly["Month"], y=monthly["Engagement"],
             mode="lines+markers",
-            line=dict(color="#4f8ef7", width=2.5),
-            marker=dict(size=5, color="#4f8ef7"),
-            fill="tozeroy", fillcolor="rgba(79,142,247,0.07)"))
+            line=dict(color="#a855f7", width=2.5),
+            marker=dict(size=5, color="#ec4899"),
+            fill="tozeroy", fillcolor="rgba(168,85,247,0.07)"))
         dark(fig, 300)
         fig.update_layout(title=dict(text="Monthly Engagement Trend",
-                                     font=dict(size=12,color="#5c6488")))
+                                     font=dict(size=12,color="#6b4fa0")))
         st.plotly_chart(fig, use_container_width=True)
 
     with ch2:
@@ -473,58 +721,53 @@ if page == "Executive Overview":
             values=qc["Count"],
             hole=0.62,
             marker=dict(colors=[Q_CLR.get(q,"#888") for q in qc["Quality"]],
-                        line=dict(color="#0d0f14",width=2)),
+                        line=dict(color="#0e0814",width=2)),
             text=qc["Pct"].map(lambda p: f"{p:.1f}%"),
-            textinfo="text",
-            textposition="inside",
-            textfont=dict(size=10, color="#e8eaf6"),
+            textinfo="text", textposition="inside",
+            textfont=dict(size=10, color="#f0eaf6"),
             hovertemplate="<b>%{label}</b><extra></extra>",
             direction="clockwise", sort=False))
         dark(fig2, 300)
         fig2.update_layout(
-            title=dict(text="Lead Quality Distribution — count & %",
-                       font=dict(size=12,color="#5c6488")),
+            title=dict(text="Lead Quality Distribution",
+                       font=dict(size=12,color="#6b4fa0")),
             legend=dict(orientation="h",y=-0.18,font=dict(size=10)))
         st.plotly_chart(fig2, use_container_width=True)
 
     sec("Category Comparison Charts")
-    desc("<b>Select 2 or 3 categories</b> below to compare their Avg Engagement Rate, "
-         "Avg Follower Count, and Lead Quality distribution side by side.")
+    desc("<b>Use the Category filter in the sidebar</b> to choose up to 5 categories to compare. "
+         "If no categories are selected, the top 2 categories will be shown by default.")
 
     if "Category_Name" in leads.columns:
         avail_cats = sorted(leads["Category_Name"].dropna().unique().tolist())
-        sel_compare = st.multiselect(
-            "Choose categories to compare (2–3 recommended)",
-            avail_cats,
-            default=avail_cats[:2] if len(avail_cats) >= 2 else avail_cats,
-            max_selections=3,
-            key="cat_compare"
-        )
-
-        if len(sel_compare) < 2:
-            st.info("Select at least 2 categories to see the comparison charts.")
+        # Drive comparison from sidebar selection (`sel_cats`). If empty, show top 2.
+        compare_cats = sel_cats if sel_cats else avail_cats[:2]
+        if not compare_cats:
+            st.info("No categories available to compare.")
         else:
-            cmp_df = leads[leads["Category_Name"].isin(sel_compare)]
-            cc1, cc2, cc3 = st.columns(3)
+            # Limit comparison to at most 5 categories
+            compare_cats = compare_cats[:5]
+            cmp_df = leads[leads["Category_Name"].isin(compare_cats)]
+            cc1, cc2 = st.columns(2)
 
             with cc1:
-                er_bar = (cmp_df.groupby("Category_Name")["Engagement_Rate"]
-                          .mean().reset_index()
-                          .sort_values("Engagement_Rate", ascending=False))
-                er_bar["Color"] = er_bar["Category_Name"].map(
-                    lambda x: CAT_CLR.get(str(x).lower(), "#4f8ef7"))
+                eng_bar = (cmp_df.groupby("Category_Name")["Engagement"]
+                           .sum().reset_index()
+                           .sort_values("Engagement", ascending=False))
+                eng_bar["Color"] = eng_bar["Category_Name"].map(
+                    lambda x: CAT_CLR.get(str(x).lower(), "#a855f7"))
                 fig_a = go.Figure()
-                for _, r in er_bar.iterrows():
+                for _, r in eng_bar.iterrows():
                     fig_a.add_trace(go.Bar(
-                        x=[r["Category_Name"]], y=[r["Engagement_Rate"]],
+                        x=[r["Category_Name"]], y=[r["Engagement"]],
                         marker_color=r["Color"], marker_line_width=0,
-                        text=[f"{r['Engagement_Rate']:.2f}%"],
+                        text=[fmt(int(r["Engagement"]))],
                         textposition="outside",
-                        textfont=dict(color="#9ba3c4", size=11),
+                        textfont=dict(color="#9b7ec8", size=11),
                         name=r["Category_Name"]))
                 dark(fig_a, 280)
-                fig_a.update_layout(title=dict(text="Avg Engagement Rate %",
-                                               font=dict(size=12,color="#5c6488")),
+                fig_a.update_layout(title=dict(text="Total Engagement",
+                                               font=dict(size=12,color="#6b4fa0")),
                                     showlegend=False, bargap=0.4)
                 st.plotly_chart(fig_a, use_container_width=True)
 
@@ -533,7 +776,7 @@ if page == "Executive Overview":
                            .mean().reset_index()
                            .sort_values("Follower_Count", ascending=False))
                 fol_bar["Color"] = fol_bar["Category_Name"].map(
-                    lambda x: CAT_CLR.get(str(x).lower(), "#4f8ef7"))
+                    lambda x: CAT_CLR.get(str(x).lower(), "#a855f7"))
                 fig_b = go.Figure()
                 for _, r in fol_bar.iterrows():
                     fig_b.add_trace(go.Bar(
@@ -541,29 +784,13 @@ if page == "Executive Overview":
                         marker_color=r["Color"], marker_line_width=0,
                         text=[fmt(int(r["Follower_Count"]))],
                         textposition="outside",
-                        textfont=dict(color="#9ba3c4", size=11),
+                        textfont=dict(color="#9b7ec8", size=11),
                         name=r["Category_Name"]))
                 dark(fig_b, 280)
                 fig_b.update_layout(title=dict(text="Avg Follower Count",
-                                               font=dict(size=12,color="#5c6488")),
+                                               font=dict(size=12,color="#6b4fa0")),
                                     showlegend=False, bargap=0.4)
                 st.plotly_chart(fig_b, use_container_width=True)
-
-            with cc3:
-                lq_bar = (cmp_df.groupby(["Category_Name","Lead_Quality"])
-                          .size().reset_index(name="Count"))
-                fig_c = px.bar(lq_bar, x="Category_Name", y="Count", color="Lead_Quality",
-                               barmode="stack", color_discrete_map=Q_CLR,
-                               text="Count")
-                fig_c.update_traces(marker_line_width=0, textposition="inside",
-                                    textfont=dict(size=10))
-                dark(fig_c, 280)
-                fig_c.update_layout(title=dict(text="Lead Quality Count",
-                                               font=dict(size=12,color="#5c6488")),
-                                    bargap=0.4,
-                                    legend=dict(orientation="h",y=-0.25,font=dict(size=10)))
-                st.plotly_chart(fig_c, use_container_width=True)
-
 
 # ==========================================================
 # PAGE 2 — LEAD INTELLIGENCE
@@ -572,36 +799,45 @@ elif page == "Lead Intelligence":
     total  = len(leads)
     hq     = (leads["Lead_Quality"]=="high").sum()
     hi_er  = (leads["Engagement_Rate"] > 15).sum()
+    food_high = 0
+    food_top_score = None
+    if "Category_Name" in leads.columns and "Lead_Score" in leads.columns:
+        food_mask  = leads["Category_Name"].astype(str).str.lower() == "food"
+        food_slice = leads.loc[food_mask]
+        if len(food_slice) > 0:
+            food_top_score = food_slice["Lead_Score"].max()
+            food_high = int((food_slice["Lead_Quality"] == "high").sum())
 
     st.markdown(
-        f'<p style="color:#5c6488;font-size:13px;margin-bottom:1rem">'
+        f'<p style="color:#6b4fa0;font-size:15px;margin-bottom:1rem">'
         f'Influencer quality signals, authenticity analysis, and profile ranking · '
-        f'<b style="color:#4f8ef7">{total:,} records in view</b></p>',
+        f'<b style="color:#d8b4fe">{total:,} records in view</b></p>',
         unsafe_allow_html=True)
 
-    # ── KPIs: FF Ratio replaced with Avg Accounts Following (whole number) ──
     avg_following = leads["Following_Count"].mean() if "Following_Count" in leads.columns else 0
     avg_following = 0 if (avg_following is None or (isinstance(avg_following, float) and np.isnan(avg_following))) else avg_following
 
     k1, k2, k3, k4 = st.columns(4, gap="large")
-    k1.markdown(kpi("Total Influencers",
-                    fmt(total),
-                    "matching current filter",                                                "#4f8ef7"), unsafe_allow_html=True)
-    k2.markdown(kpi("High-Quality Leads",
-                    fmt(hq),
-                    f"{hq/max(total,1)*100:.1f}% are ready for outreach",                    "#34d399"), unsafe_allow_html=True)
-    k3.markdown(kpi("Avg Accounts Following",
-                    f"{round(avg_following):,}",
-                    "Average number of accounts each influencer follows",                     "#fbbf24"), unsafe_allow_html=True)
-    k4.markdown(kpi("High Engagement Influencers",
-                    fmt(hi_er),
-                    "Influencers with Engagement Rate above 15% — best to contact first",     "#f472b6"), unsafe_allow_html=True)
+    k1.markdown(kpi("Total Influencers",        fmt(total),
+                    "matching current filter", "#a855f7","#ec4899",80), unsafe_allow_html=True)
+    k2.markdown(kpi("High-Quality Leads",       fmt(hq),
+                    f"{hq/max(total,1)*100:.1f}% ready for outreach", "#4ade80","#22c55e",
+                    int(hq/max(total,1)*100)), unsafe_allow_html=True)
+    k3.markdown(kpi("Avg Accounts Following",   f"{round(avg_following):,}",
+                    "Avg accounts each influencer follows", "#c084fc","#a855f7",55), unsafe_allow_html=True)
+    k4.markdown(kpi("High Engagement",          fmt(hi_er),
+                    "ER above 15% — contact first", "#ec4899","#be185d",
+                    int(hi_er/max(total,1)*100)), unsafe_allow_html=True)
+
+    if sel_cats:
+        st.markdown(
+            '<div class="insight" style="--ac:#818cf8">'
+            '📂 <b>Category-aware quality is active</b> — <b>high</b> means top-tier '
+            'within the selected category.</div>', unsafe_allow_html=True)
 
     desc("<b>Avg Accounts Following</b> = average number of other accounts each influencer follows. "
-         "A <b>lower number</b> means the influencer follows very few people compared to their audience — "
-         "a strong signal of <b>authentic organic growth</b>. "
-         "A <b>high number</b> (e.g. 5,000+) suggests the account may have grown by mass-following, "
-         "a common fake-follower tactic. Use this to screen out inauthentic accounts before outreach.")
+         "A <b>lower number</b> signals authentic organic growth. "
+         "A <b>high number</b> (5,000+) suggests mass-following — a common fake-follower tactic.")
 
     sec("Follower Reach vs Engagement Rate")
     ch1, ch2 = st.columns([3, 2])
@@ -617,25 +853,24 @@ elif page == "Lead Intelligence":
         fig.update_traces(marker_line_width=0)
         dark(fig, 320)
         fig.update_layout(title=dict(text="Followers vs Engagement Rate",
-                                     font=dict(size=12,color="#5c6488")))
+                                     font=dict(size=12,color="#6b4fa0")))
         st.plotly_chart(fig, use_container_width=True)
 
     with ch2:
-        # ── Authenticity bar: Following Count per category (whole numbers) ──
         sec("Avg Accounts Following per Category")
         if "Category_Name" in leads.columns and "Following_Count" in leads.columns:
             fc_cat = leads.groupby("Category_Name")["Following_Count"].mean().sort_values()
             max_fc = fc_cat.max() if fc_cat.max() > 0 else 1
-            html = ('<div style="background:#141720;border:1px solid #2a2f45;'
-                    'border-radius:12px;padding:18px 20px">')
+            html = ('<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);'
+                    'border:1px solid #2d1555;border-radius:14px;padding:18px 20px">')
             for cat, val in fc_cat.items():
-                color = CAT_CLR.get(str(cat).lower(), "#4f8ef7")
+                color = CAT_CLR.get(str(cat).lower(), "#a855f7")
                 html += pb(str(cat).title(), f"{round(val):,}", val / max_fc * 100, color)
-            html += ('<div style="font-size:10.5px;color:#5c6488;margin-top:10px">'
-                     'Lower number = fewer accounts followed = more focused, organic creator</div></div>')
+            html += ('<div style="font-size:10.5px;color:#6b4fa0;margin-top:10px">'
+                     'Lower number = fewer accounts followed = organic creator</div></div>')
             st.markdown(html, unsafe_allow_html=True)
 
-    sec("Follower Tier Distribution & Engagement Box")
+    sec("Follower Tier Distribution & Engagement Rate by Category")
     ch3, ch4 = st.columns(2)
 
     with ch3:
@@ -644,23 +879,40 @@ elif page == "Lead Intelligence":
             td = leads.groupby(["Category_Name","Follower_Tier"]).size().reset_index(name="Count")
             fig3 = px.bar(td, x="Category_Name", y="Count", color="Follower_Tier",
                           barmode="stack", category_orders={"Follower_Tier":tier_order},
-                          color_discrete_sequence=["#1e3a5f","#1d4ed8","#4f8ef7","#93c5fd","#dbeafe"])
+                          color_discrete_sequence=["#2d1555","#6d28d9","#a855f7","#d8b4fe","#f3e8ff"])
             fig3.update_traces(marker_line_width=0)
             dark(fig3, 290)
             fig3.update_layout(
-                title=dict(text="Follower Tier Stack by Category",font=dict(size=12,color="#5c6488")),
+                title=dict(text="Follower Tier Stack by Category",font=dict(size=12,color="#6b4fa0")),
                 bargap=0.25)
             st.plotly_chart(fig3, use_container_width=True)
 
     with ch4:
         if "Category_Name" in leads.columns:
-            fig4 = px.box(leads, x="Category_Name", y="Engagement_Rate",
-                          color="Category_Name", color_discrete_map=CAT_CLR, points=False)
-            fig4.update_traces(line_width=1.5)
+            er_cat = (leads.groupby("Category_Name")["Engagement_Rate"]
+                      .agg(["mean","min","max"]).reset_index())
+            er_cat["Color"] = er_cat["Category_Name"].map(
+                lambda x: CAT_CLR.get(str(x).lower(), "#a855f7"))
+            fig4 = go.Figure()
+            for _, r in er_cat.sort_values("mean", ascending=False).iterrows():
+                fig4.add_trace(go.Bar(
+                    x=[r["Category_Name"]], y=[r["mean"]],
+                    marker_color=r["Color"], marker_line_width=0,
+                    error_y=dict(type="data",
+                                 array=[max(r["max"]-r["mean"],0)],
+                                 arrayminus=[max(r["mean"]-r["min"],0)],
+                                 thickness=1, width=4, color="#9b7ec8"),
+                    text=[f"{r['mean']:.2f}%"], textposition="outside",
+                    textfont=dict(color="#9b7ec8", size=11),
+                    hovertemplate=(f"<b>{r['Category_Name']}</b><br>"
+                                   f"Avg ER: {r['mean']:.2f}%<br>"
+                                   f"Min: {r['min']:.2f}%<br>"
+                                   f"Max: {r['max']:.2f}%<extra></extra>"),
+                    name=r["Category_Name"]))
             dark(fig4, 290)
             fig4.update_layout(
-                title=dict(text="Engagement Rate Distribution by Category",font=dict(size=12,color="#5c6488")),
-                showlegend=False)
+                title=dict(text="Average Engagement Rate by Category",font=dict(size=12,color="#6b4fa0")),
+                showlegend=False, bargap=0.35)
             st.plotly_chart(fig4, use_container_width=True)
 
     sec("Top Influencer Profiles")
@@ -679,51 +931,68 @@ elif page == "Lead Intelligence":
 
 
 # ==========================================================
-# PAGE 3 — POST ANALYTICS  (includes Post Inspector)
+# PAGE 3 — POST ANALYTICS
 # ==========================================================
 elif page == "Post Analytics":
 
-    avg_l  = posts["Likes"].mean()    if "Likes"    in posts.columns else 0
-    avg_c  = posts["Comments"].mean() if "Comments" in posts.columns else 0
+    # Post Analytics should not be affected by sidebar filters.
+    posts_pa = posts_full.copy()
+
+    avg_l  = posts_pa["Likes"].mean()    if "Likes"    in posts_pa.columns else 0
+    avg_c  = posts_pa["Comments"].mean() if "Comments" in posts_pa.columns else 0
     avg_l  = 0 if (avg_l is None or (isinstance(avg_l, float) and np.isnan(avg_l))) else avg_l
     avg_c  = 0 if (avg_c is None or (isinstance(avg_c, float) and np.isnan(avg_c))) else avg_c
-    eqr_post = (posts["Engagement"] / posts["Likes"].replace(0,np.nan)).mean() \
-               if "Likes" in posts.columns else 0
-    eqr_post = 0 if (eqr_post is None or (isinstance(eqr_post, float) and np.isnan(eqr_post))) else eqr_post
 
     st.markdown(
-        f'<p style="color:#5c6488;font-size:13px;margin-bottom:1rem">'
+        f'<p style="color:#6b4fa0;font-size:15px;margin-bottom:1rem">'
         f'Content performance, engagement patterns, and post inspector · '
-        f'<b style="color:#4f8ef7">{len(posts):,} posts in view</b></p>',
+        f'<b style="color:#d8b4fe">{len(posts_pa):,} posts in view</b></p>',
         unsafe_allow_html=True)
 
-    if len(posts) == 0:
+    if len(posts_pa) == 0:
         st.info("No posts match the current filters.")
         st.stop()
 
-    # ════════════════════════════════════════
-    # POST INSPECTOR
-    # ════════════════════════════════════════
-    st.markdown(
-        '<div style="height:2px;background:linear-gradient(90deg,#1a3f8f,#4f8ef7,transparent);'
-        'border-radius:2px;margin:8px 0 8px;"></div>',
-        unsafe_allow_html=True)
+    # ── POST INSPECTOR ──────────────────────────────────────
+    grad_divider()
     sec("🔍 Post Inspector — Search & Drill Down")
     desc("Search any <b>Post ID</b> or <b>Handle</b> to view the post's metrics, "
          "engagement history, and the influencer's full profile below.")
 
+    pt_nonce = st.session_state.get("pt_refresh_nonce", 0)
+
     src1, src2, src3 = st.columns([3,2,2])
     search_text = src1.text_input("🔍 Search Post ID or Handle",
-                                   placeholder="e.g. POST000001 or @username",
-                                   key="pt_search")
-    month_opts  = ["All Months"] + sorted(
+                                   placeholder="e.g. POST000001 or username",
+                                   key=f"pt_search_{pt_nonce}")
+
+    # Auto-sync the month/category pickers to the first matching post when searching.
+    if search_text.strip():
+        q = search_text.strip().lower()
+        search_hits = posts_full.copy()
+        mask = pd.Series([False] * len(search_hits), index=search_hits.index)
+        if "Post_ID" in search_hits.columns:
+            mask |= search_hits["Post_ID"].astype(str).str.lower().str.contains(q, na=False)
+        if "Handle" in search_hits.columns:
+            mask |= search_hits["Handle"].astype(str).str.lower().str.contains(q, na=False)
+        search_hits = search_hits[mask]
+        if len(search_hits) > 0:
+            first_hit = search_hits.iloc[0]
+            hit_month = first_hit.get("MonthName", None)
+            hit_cat   = first_hit.get("Category_Name", None)
+            if pd.notna(hit_month) and hit_month in posts_full["MonthName"].dropna().unique().tolist():
+                st.session_state["pt_month"] = hit_month
+            if pd.notna(hit_cat) and str(hit_cat) in posts_full["Category_Name"].dropna().unique().tolist():
+                st.session_state["pt_cat"] = str(hit_cat)
+
+    month_opts = ["All Months"] + sorted(
         posts_full["MonthName"].dropna().unique().tolist(),
         key=lambda x: pd.to_datetime(x, format="%b %Y"))
-    sel_month   = src2.selectbox("📅 Month", month_opts, key="pt_month")
+    sel_month  = src2.selectbox("📅 Month", month_opts, key="pt_month")
     cat_opts_pt = ["All Categories"] + sorted(
         posts_full["Category_Name"].dropna().unique().tolist()
         if "Category_Name" in posts_full.columns else [])
-    sel_cat_pt  = src3.selectbox("📂 Category", cat_opts_pt, key="pt_cat")
+    sel_cat_pt = src3.selectbox("📂 Category", cat_opts_pt, key="pt_cat")
 
     pool = posts_full.copy()
     if sel_month != "All Months":
@@ -740,32 +1009,34 @@ elif page == "Post Analytics":
         pool = pool[pool["Category_Name"] == sel_cat_pt]
 
     st.markdown(
-        f'<div style="font-size:12px;color:#5c6488;margin-bottom:12px;">'
+        f'<div style="font-size:12px;color:#6b4fa0;margin-bottom:12px;">'
         f'{len(pool):,} post(s) match · select a Post ID below to inspect</div>',
         unsafe_allow_html=True)
+
+    def _reset_post_inspector():
+        st.session_state["pt_refresh_nonce"] = st.session_state.get("pt_refresh_nonce", 0) + 1
+        st.session_state.pop("pt_search", None)
+        st.session_state.pop("pt_pid", None)
 
     def render_summary_ui(selected_row, error_message=None):
         selected_handle = str(selected_row.get("Handle", "—"))
         selected_handle_key = selected_handle.strip().lower()
         selected_lead_mask = leads_full["Handle"].astype(str).str.strip().str.lower() == selected_handle_key
         selected_lead_found = bool(selected_lead_mask.any())
-
         if error_message:
             st.info(error_message)
-
-        post_date = str(selected_row.get("Post_Date", ""))[:10]
-        category = str(selected_row.get("Category_Name", "—")).title()
-        quality = str(selected_row.get("Lead_Quality", "—"))
-        q_color = Q_CLR.get(quality, "#9ba3c4")
-        q_badge = (f'<span style="background:{q_color}22;color:{q_color};font-size:11px;'
-                   f'font-weight:500;padding:2px 9px;border-radius:20px;'
-                   f'border:1px solid {q_color}44">{quality.title()}</span>')
-        cat_color = CAT_CLR.get(str(selected_row.get("Category_Name", "")).lower(), "#4f8ef7")
-
+        post_date = str(selected_row.get("Post_Date",""))[:10]
+        category  = str(selected_row.get("Category_Name","—")).title()
+        quality   = str(selected_row.get("Lead_Quality","—"))
+        q_color   = Q_CLR.get(quality,"#9b7ec8")
+        q_badge   = (f'<span style="background:{q_color}22;color:{q_color};font-size:11px;'
+                     f'font-weight:500;padding:2px 9px;border-radius:20px;'
+                     f'border:1px solid {q_color}44">{quality.title()}</span>')
+        cat_color = CAT_CLR.get(str(selected_row.get("Category_Name","")).lower(),"#a855f7")
         st.markdown(f"""
         <div class="post-banner">
           <div class="post-banner-id">{sel_pid}</div>
-          <div class="post-banner-handle">@{selected_handle}</div>
+          <div class="post-banner-handle">{selected_handle}</div>
           <div class="post-banner-meta">
             {post_date} &nbsp;·&nbsp;
             <span style="color:{cat_color}">{category}</span>
@@ -775,16 +1046,16 @@ elif page == "Post Analytics":
 
         pills_html = '<div style="margin-bottom:18px;display:flex;flex-wrap:wrap;">'
         stats = [
-            ("Likes",      fmt(safe_int(selected_row.get("Likes", 0))),           "#34d399"),
-            ("Comments",   fmt(safe_int(selected_row.get("Comments", 0))),         "#4f8ef7"),
-            ("Engagement", fmt(safe_int(selected_row.get("Engagement", 0))),       "#a78bfa"),
-            ("Lead Score", f"{safe_float(selected_row.get('Lead_Score', 0)):.1f}", "#fbbf24"),
+            ("Likes",      fmt(safe_int(selected_row.get("Likes",0))),            "#4ade80"),
+            ("Comments",   fmt(safe_int(selected_row.get("Comments",0))),          "#818cf8"),
+            ("Engagement", fmt(safe_int(selected_row.get("Engagement",0))),        "#c084fc"),
+            ("Lead Score", f"{safe_float(selected_row.get('Lead_Score',0)):.1f}",  "#fbbf24"),
         ]
         if selected_lead_found:
             selected_inf = leads_full[selected_lead_mask].iloc[0]
             stats += [
-                ("Followers", fmt(safe_int(selected_inf["Follower_Count"])),              "#f472b6"),
-                ("ER %",      f"{safe_float(selected_inf['Engagement_Rate']):.2f}%",       "#f87171"),
+                ("Followers", fmt(safe_int(selected_inf["Follower_Count"])),               "#ec4899"),
+                ("ER %",      f"{safe_float(selected_inf['Engagement_Rate']):.2f}%",        "#f87171"),
             ]
         for lbl, val, color in stats:
             pills_html += (f'<span class="stat-pill" style="--pc:{color}">'
@@ -793,21 +1064,18 @@ elif page == "Post Analytics":
         st.markdown(pills_html, unsafe_allow_html=True)
 
         sec("Influencer Profile")
-        
-
         if selected_lead_found:
             selected_inf = leads_full[selected_lead_mask].iloc[0]
-            sent_text, sent_color = sentiment_code(selected_inf.get("Avg_Sentiment", 0))
+            sent_text, sent_color = sentiment_code(selected_inf.get("Avg_Sentiment",0))
             ic5, ic6, ic7, ic8 = st.columns(4)
-            ic5.markdown(kpi("Followers",       fmt(safe_int(selected_inf.get("Follower_Count", 0))),          "in master profile", "#4f8ef7"), unsafe_allow_html=True)
-            ic6.markdown(kpi("Engagement Rate", f"{safe_float(selected_inf.get('Engagement_Rate', 0)):.2f}%", "in master profile", "#34d399"), unsafe_allow_html=True)
-            ic7.markdown(kpi("Accounts Following", f"{round(safe_float(selected_inf.get('Following_Count', 0))):,}", "in master profile", "#a78bfa"), unsafe_allow_html=True)
-            ic8.markdown(kpi("Sentiment Code", sent_text, "in master profile", sent_color), unsafe_allow_html=True)
+            ic5.markdown(kpi("Followers",       fmt(safe_int(selected_inf.get("Follower_Count",0))),         "master profile","#a855f7","#ec4899",60), unsafe_allow_html=True)
+            ic6.markdown(kpi("Engagement Rate", f"{safe_float(selected_inf.get('Engagement_Rate',0)):.2f}%","master profile","#4ade80","#22c55e",55), unsafe_allow_html=True)
+            ic7.markdown(kpi("Accts Following", f"{round(safe_float(selected_inf.get('Following_Count',0))):,}","master profile","#c084fc","#a855f7",45), unsafe_allow_html=True)
+            ic8.markdown(kpi("Sentiment",       sent_text,                                                    "master profile",sent_color,sent_color,70), unsafe_allow_html=True)
         else:
-            st.info(f"No influencer master record found for @{selected_handle}.")
+            st.info(f"No influencer master record found for {selected_handle}.")
 
     inspector_found = len(pool) > 0
-
     if not inspector_found:
         st.info("No posts match — try a different search term, month, or category.")
         if search_text.strip():
@@ -815,46 +1083,49 @@ elif page == "Post Analytics":
             fallback = posts_full.copy()
             if sel_month != "All Months":
                 fallback = fallback[fallback["MonthName"] == sel_month]
-            mask = pd.Series([False] * len(fallback), index=fallback.index)
+            mask = pd.Series([False]*len(fallback), index=fallback.index)
             if "Post_ID" in fallback.columns:
                 mask |= fallback["Post_ID"].astype(str).str.lower().str.contains(q, na=False)
             if "Handle" in fallback.columns:
                 mask |= fallback["Handle"].astype(str).str.lower().str.contains(q, na=False)
             fallback = fallback[mask]
             if len(fallback) > 0:
-                render_summary_ui(fallback.iloc[0], error_message="No posts match — try a different search term, month, or category.")
+                render_summary_ui(fallback.iloc[0], error_message="No posts match.")
         st.stop()
     else:
         post_id_col = "Post_ID" if "Post_ID" in pool.columns else pool.columns[0]
         post_ids    = pool[post_id_col].astype(str).tolist()
-        sel_pid     = st.selectbox("📋 Select Post ID", post_ids, key="pt_pid")
+        pid_nonce   = st.session_state.get("pt_refresh_nonce", 0)
+        pid_col, refresh_col = st.columns([6, 1], gap="small")
+        sel_pid = pid_col.selectbox("📋 Select Post ID", post_ids, key=f"pt_pid_{pid_nonce}")
+        refresh_col.button("↻ Refresh", use_container_width=True, on_click=_reset_post_inspector)
         row         = pool[pool[post_id_col].astype(str) == sel_pid].iloc[0]
 
         handle     = str(row.get("Handle","—"))
         handle_key = handle.strip().lower()
         selected_category_key = sel_cat_pt.strip().lower()
-        row_category_key = str(row.get('Category_Name', '')).strip().lower()
-        category_matches = (sel_cat_pt == "All Categories") or (row_category_key == selected_category_key)
+        row_category_key      = str(row.get('Category_Name','')).strip().lower()
+        category_matches      = (sel_cat_pt == "All Categories") or (row_category_key == selected_category_key)
         lead_mask  = leads_full["Handle"].astype(str).str.strip().str.lower() == handle_key
         lead_found = bool(lead_mask.any())
 
         if not category_matches:
-            render_summary_ui(row, error_message="No posts match — try a different search term, month, or category.")
+            render_summary_ui(row, error_message="No posts match — try a different category.")
             st.stop()
 
         post_date = str(row.get("Post_Date",""))[:10]
         category  = str(row.get("Category_Name","—")).title()
         quality   = str(row.get("Lead_Quality","—"))
-        q_color   = Q_CLR.get(quality,"#9ba3c4")
+        q_color   = Q_CLR.get(quality,"#9b7ec8")
         q_badge   = (f'<span style="background:{q_color}22;color:{q_color};font-size:11px;'
                      f'font-weight:500;padding:2px 9px;border-radius:20px;'
                      f'border:1px solid {q_color}44">{quality.title()}</span>')
-        cat_color = CAT_CLR.get(str(row.get("Category_Name","")).lower(),"#4f8ef7")
+        cat_color = CAT_CLR.get(str(row.get("Category_Name","")).lower(),"#a855f7")
 
         st.markdown(f"""
         <div class="post-banner">
           <div class="post-banner-id">{sel_pid}</div>
-          <div class="post-banner-handle">@{handle}</div>
+          <div class="post-banner-handle">{handle}</div>
           <div class="post-banner-meta">
             {post_date} &nbsp;·&nbsp;
             <span style="color:{cat_color}">{category}</span>
@@ -864,15 +1135,15 @@ elif page == "Post Analytics":
 
         pills_html = '<div style="margin-bottom:18px;display:flex;flex-wrap:wrap;">'
         stats = [
-            ("Likes",      fmt(safe_int(row.get("Likes",0))),           "#34d399"),
-            ("Comments",   fmt(safe_int(row.get("Comments",0))),         "#4f8ef7"),
-            ("Engagement", fmt(safe_int(row.get("Engagement",0))),       "#a78bfa"),
-            ("Lead Score", f"{safe_float(row.get('Lead_Score',0)):.1f}", "#fbbf24"),
+            ("Likes",      fmt(safe_int(row.get("Likes",0))),            "#4ade80"),
+            ("Comments",   fmt(safe_int(row.get("Comments",0))),          "#818cf8"),
+            ("Engagement", fmt(safe_int(row.get("Engagement",0))),        "#c084fc"),
+            ("Lead Score", f"{safe_float(row.get('Lead_Score',0)):.1f}",  "#fbbf24"),
         ]
         if lead_found:
             inf_row = leads_full[lead_mask].iloc[0]
             stats += [
-                ("Followers", fmt(safe_int(inf_row["Follower_Count"])),               "#f472b6"),
+                ("Followers", fmt(safe_int(inf_row["Follower_Count"])),               "#ec4899"),
                 ("ER %",      f"{safe_float(inf_row['Engagement_Rate']):.2f}%",        "#f87171"),
             ]
         for lbl, val, color in stats:
@@ -883,36 +1154,34 @@ elif page == "Post Analytics":
 
         handle_posts = posts_full[
             posts_full["Handle"].astype(str).str.strip().str.lower() == handle_key
-        ].copy()
-        handle_posts = handle_posts.sort_values("Post_Date")
+        ].copy().sort_values("Post_Date")
 
         sec("Influencer Profile")
         if lead_found:
             inf_r = leads_full[lead_mask].iloc[0]
-            sent_text, sent_color = sentiment_code(inf_r.get("Avg_Sentiment", 0))
+            sent_text, sent_color = sentiment_code(inf_r.get("Avg_Sentiment",0))
             p1, p2, p3, p4 = st.columns(4)
-            p1.markdown(kpi("Total Posts",         f"{len(handle_posts):,}",                                  "by this user",      "#4f8ef7"), unsafe_allow_html=True)
-            p2.markdown(kpi("Followers",           fmt(safe_int(inf_r.get("Follower_Count",0))),        "in master profile", "#34d399"), unsafe_allow_html=True)
-            p3.markdown(kpi("Accounts Following",  f"{round(safe_float(inf_r.get('Following_Count',0))):,}", "in master profile", "#a78bfa"), unsafe_allow_html=True)
-            p4.markdown(kpi("Sentiment Code",      sent_text,                                             "in master profile", sent_color), unsafe_allow_html=True)
+            p1.markdown(kpi("Total Posts",        f"{len(handle_posts):,}",                                  "by this user",      "#a855f7","#ec4899",60), unsafe_allow_html=True)
+            p2.markdown(kpi("Followers",           fmt(safe_int(inf_r.get("Follower_Count",0))),        "master profile",    "#4ade80","#22c55e",65), unsafe_allow_html=True)
+            p3.markdown(kpi("Accts Following",     f"{round(safe_float(inf_r.get('Following_Count',0))):,}", "master profile","#c084fc","#a855f7",45), unsafe_allow_html=True)
+            p4.markdown(kpi("Sentiment",           sent_text,                                             "master profile",    sent_color,sent_color,70), unsafe_allow_html=True)
         else:
-            st.info(f"No influencer master record found for @{handle}.")
+            st.info(f"No influencer master record found for {handle}.")
 
         if len(handle_posts) > 1:
-            sec(f"@{handle} — Engagement History")
+            sec(f"{handle} — Engagement History")
             hc1, hc2 = st.columns(2)
-
             with hc1:
                 fig_h1 = go.Figure()
                 fig_h1.add_trace(go.Scatter(
                     x=handle_posts["Post_Date"], y=handle_posts["Engagement"],
                     mode="lines+markers",
-                    line=dict(color="#4f8ef7", width=2),
-                    marker=dict(size=5, color="#4f8ef7"),
-                    fill="tozeroy", fillcolor="rgba(79,142,247,0.07)",
+                    line=dict(color="#a855f7", width=2),
+                    marker=dict(size=5, color="#ec4899"),
+                    fill="tozeroy", fillcolor="rgba(168,85,247,0.07)",
                     name="Engagement"))
                 sel_date = row.get("Post_Date")
-                sel_eng  = row.get("Engagement", 0)
+                sel_eng  = row.get("Engagement",0)
                 if pd.notna(sel_date):
                     fig_h1.add_trace(go.Scatter(
                         x=[sel_date], y=[sel_eng],
@@ -922,7 +1191,7 @@ elif page == "Post Analytics":
                 dark(fig_h1, 280)
                 fig_h1.update_layout(title=dict(
                     text="Engagement Over Time  (★ = selected post)",
-                    font=dict(size=12,color="#5c6488")))
+                    font=dict(size=12,color="#6b4fa0")))
                 st.plotly_chart(fig_h1, use_container_width=True)
 
             with hc2:
@@ -931,14 +1200,12 @@ elif page == "Post Analytics":
                     hp["Label"] = hp["Post_Date"].dt.strftime("%b %d")
                     hp = hp.tail(15).reset_index(drop=True)
                     fig_h2 = go.Figure()
-                    fig_h2.add_trace(go.Bar(
-                        y=hp["Label"], x=hp["Likes"],
+                    fig_h2.add_trace(go.Bar(y=hp["Label"], x=hp["Likes"],
                         name="Likes", orientation="h",
-                        marker_color="#4f8ef7", marker_line_width=0, opacity=0.85))
-                    fig_h2.add_trace(go.Bar(
-                        y=hp["Label"], x=hp["Comments"],
+                        marker_color="#818cf8", marker_line_width=0, opacity=0.85))
+                    fig_h2.add_trace(go.Bar(y=hp["Label"], x=hp["Comments"],
                         name="Comments", orientation="h",
-                        marker_color="#f472b6", marker_line_width=0, opacity=0.85))
+                        marker_color="#ec4899", marker_line_width=0, opacity=0.85))
                     sel_label = pd.to_datetime(sel_date).strftime("%b %d") \
                                 if pd.notna(sel_date) else None
                     if sel_label and sel_label in hp["Label"].values:
@@ -950,58 +1217,48 @@ elif page == "Post Analytics":
                             line=dict(color="#f87171", width=1, dash="dot"))
                     dark(fig_h2, 280)
                     fig_h2.update_layout(
-                        title=dict(text="Likes vs Comments — last 15 posts (★ = selected)",
-                                   font=dict(size=12,color="#5c6488")),
+                        title=dict(text="Likes vs Comments — last 15 posts",
+                                   font=dict(size=12,color="#6b4fa0")),
                         barmode="group", bargap=0.22,
                         xaxis_title="Count",
-                        legend=dict(orientation="h", y=-0.2))
+                        legend=dict(orientation="h",y=-0.2))
                     st.plotly_chart(fig_h2, use_container_width=True)
 
             sec(f"Monthly Engagement — @{handle}")
             monthly_h = handle_posts.groupby("Month")["Engagement"].sum().reset_index().sort_values("Month")
             fig_h3 = px.bar(monthly_h, x="Month", y="Engagement",
-                            color_discrete_sequence=["#34d399"])
+                            color_discrete_sequence=["#a855f7"])
             fig_h3.update_traces(marker_line_width=0)
             dark(fig_h3, 240)
             fig_h3.update_layout(title=dict(text="Monthly Engagement for this Influencer",
-                                             font=dict(size=12,color="#5c6488")), bargap=0.25)
+                                             font=dict(size=12,color="#6b4fa0")), bargap=0.25)
             st.plotly_chart(fig_h3, use_container_width=True)
-
-            
         else:
-            st.info(f"Only one post found for @{handle} in the dataset.")
+            st.info(f"Only one post found for {handle} in the dataset.")
 
-    # ════════════════════════════════════════
-    # OVERALL POST CHARTS — always shown
-    # ════════════════════════════════════════
-    st.markdown(
-        '<div style="height:2px;background:linear-gradient(90deg,#1a3f8f,#4f8ef7,transparent);'
-        'border-radius:2px;margin:28px 0 8px;"></div>',
-        unsafe_allow_html=True)
+    # ── OVERALL POST CHARTS ─────────────────────────────────
+    grad_divider()
 
-    # ── KPIs ──
-    
     sec("Post Volume & Content Distribution")
     ch1, ch2 = st.columns([3,2])
 
     with ch1:
-        me = posts.groupby("Month")["Engagement"].sum().reset_index().sort_values("Month")
+        me = posts_pa.groupby("Month")["Engagement"].sum().reset_index().sort_values("Month")
         fig = go.Figure()
         fig.add_trace(go.Bar(x=me["Month"], y=me["Engagement"],
-            marker_color="#4f8ef7", marker_line_width=0, opacity=0.85, name="Engagement"))
+            marker_color="#a855f7", marker_line_width=0, opacity=0.85, name="Engagement"))
         fig.add_trace(go.Scatter(x=me["Month"], y=me["Engagement"],
-            mode="lines", line=dict(color="#a3c4fd",width=1.5), showlegend=False))
+            mode="lines", line=dict(color="#ec4899",width=1.5), showlegend=False))
         dark(fig, 300)
         fig.update_layout(title=dict(text="Monthly Post Engagement",
-                                     font=dict(size=12,color="#5c6488")), bargap=0.22)
+                                     font=dict(size=12,color="#6b4fa0")), bargap=0.22)
         st.plotly_chart(fig, use_container_width=True)
 
     with ch2:
-        if "Likes" in posts.columns and "Comments" in posts.columns:
-            sp = posts.sample(min(1200, len(posts)), random_state=7).copy()
+        if "Likes" in posts_pa.columns and "Comments" in posts_pa.columns:
+            sp = posts_pa.sample(min(1200,len(posts_pa)), random_state=7).copy()
             med_likes    = sp["Likes"].median()
             med_comments = sp["Comments"].median()
-
             def _quadrant(r):
                 hi_l = r["Likes"]    >= med_likes
                 hi_c = r["Comments"] >= med_comments
@@ -1009,11 +1266,10 @@ elif page == "Post Analytics":
                 if hi_l:           return "High Likes, Low Comments"
                 if hi_c:           return "Low Likes, High Comments"
                 return "Low Likes & Comments"
-
             sp["Quadrant"] = sp.apply(_quadrant, axis=1)
             quad_colors = {
-                "High Likes & Comments":    "#34d399",
-                "High Likes, Low Comments": "#4f8ef7",
+                "High Likes & Comments":    "#4ade80",
+                "High Likes, Low Comments": "#818cf8",
                 "Low Likes, High Comments": "#fbbf24",
                 "Low Likes & Comments":     "#f87171",
             }
@@ -1022,56 +1278,102 @@ elif page == "Post Analytics":
                               color_discrete_map=quad_colors, opacity=0.65,
                               hover_data=(["Handle","Post_Date","Engagement"]
                                           if "Handle" in sp.columns else ["Post_Date","Engagement"]))
-            fig2.add_vline(x=med_likes,    line_dash="dot", line_color="#2a2f45", line_width=1.2)
-            fig2.add_hline(y=med_comments, line_dash="dot", line_color="#2a2f45", line_width=1.2)
+            fig2.add_vline(x=med_likes,    line_dash="dot", line_color="#2d1555", line_width=1.2)
+            fig2.add_hline(y=med_comments, line_dash="dot", line_color="#2d1555", line_width=1.2)
             x_max = sp["Likes"].quantile(0.97)
             y_max = sp["Comments"].quantile(0.97)
             for txt, x, y, col in [
-                ("🔥 Top",       x_max*0.82, y_max*0.90, "#34d399"),
-                ("👍 Likes",     x_max*0.82, y_max*0.12, "#4f8ef7"),
-                ("💬 Comments",  x_max*0.08, y_max*0.90, "#fbbf24"),
-                ("📉 Low",       x_max*0.08, y_max*0.12, "#f87171"),
+                ("🔥 Top",      x_max*0.82, y_max*0.90, "#4ade80"),
+                ("👍 Likes",    x_max*0.82, y_max*0.12, "#818cf8"),
+                ("💬 Comments", x_max*0.08, y_max*0.90, "#fbbf24"),
+                ("📉 Low",      x_max*0.08, y_max*0.12, "#f87171"),
             ]:
                 fig2.add_annotation(x=x, y=y, text=txt, showarrow=False,
                     font=dict(color=col, size=10),
-                    bgcolor="rgba(13,15,20,0.6)", borderpad=3)
+                    bgcolor="rgba(14,8,20,0.7)", borderpad=3)
             fig2.update_traces(marker_line_width=0)
             dark(fig2, 300)
             fig2.update_layout(
                 title=dict(text="Likes vs Comments — Quadrant View",
-                           font=dict(size=12,color="#5c6488")),
+                           font=dict(size=12,color="#6b4fa0")),
                 legend=dict(orientation="v", x=1.01, y=1,
                             font=dict(size=9), itemsizing="constant"))
             st.plotly_chart(fig2, use_container_width=True)
 
     sec("Engagement Heatmap — Month × Category")
-    if "Category_Name" in posts.columns:
-        pivot = (posts.groupby(["MonthName","Category_Name"])["Engagement"]
+    if "Category_Name" in posts_pa.columns:
+        pivot = (posts_pa.groupby(["MonthName","Category_Name"])["Engagement"]
                  .sum().unstack("Category_Name").fillna(0))
         fig3 = px.imshow(pivot,
-                         color_continuous_scale=["#0d0f14","#1a3f8f","#4f8ef7","#a3c4fd"],
+                         color_continuous_scale=["#0e0814","#2d1555","#7e22ce","#d8b4fe"],
                          aspect="auto")
         dark(fig3, 280)
         fig3.update_layout(title=dict(text="Total Engagement by Month & Category",
-                                      font=dict(size=12,color="#5c6488")),
-                           coloraxis_colorbar=dict(tickfont=dict(color="#9ba3c4")))
+                                      font=dict(size=12,color="#6b4fa0")),
+                           coloraxis_colorbar=dict(tickfont=dict(color="#9b7ec8")))
         st.plotly_chart(fig3, use_container_width=True)
 
     sec("☁️ Trending Hashtags")
-    if "Hashtags" in posts.columns:
-        text = " ".join(posts["Hashtags"].dropna().astype(str))
-        if text.strip():
-            wc = WordCloud(width=1200, height=380, background_color="#141720",
-                           colormap="cool", prefer_horizontal=0.75, max_words=70).generate(text)
+    if "Hashtags" in posts_pa.columns:
+        import re
+        from collections import Counter
+        # Choose source: prefer handle-specific posts when inspecting a handle
+        source_df = posts_pa
+        try:
+            if 'handle_posts' in locals() and isinstance(handle_posts, pd.DataFrame) and len(handle_posts) > 0:
+                source_df = handle_posts
+        except Exception:
+            source_df = posts_pa
+
+        # Collect hashtags robustly: capture #tags (allow hyphens/underscores),
+        # and also pull tokens that look like tags even if missing '#'.
+        token_re = re.compile(r"#[-\w]+")
+        word_re = re.compile(r"[A-Za-z0-9_\-]{2,}")
+        tags = []
+        for val in source_df["Hashtags"].dropna().astype(str):
+            s = val.strip()
+            # find explicit #tags first
+            found = token_re.findall(s)
+            tags.extend(found)
+            # also try splitting by commas/whitespace to catch tags without '#'
+            for part in re.split(r"[\s,;|/\\]+", s):
+                if part and not part.startswith("#"):
+                    m = word_re.findall(part)
+                    for w in m:
+                        # ignore plain numbers and short tokens
+                        if len(w) > 1 and not w.isdigit():
+                            tags.append("#" + w)
+
+        # Normalize to lowercase and count
+        tags = [t.lower() for t in tags if isinstance(t, str)]
+        freqs = Counter(tags)
+
+        if freqs:
+            # Create a larger cloud (show up to 150 words).
+            # Word cloud should display tags without the leading '#',
+            # but keep original freqs (with '#') available for any table display.
+            top_n = 150
+            # Build display frequencies by stripping leading '#'
+            from collections import Counter
+            freqs_display = Counter()
+            for tag, cnt in freqs.items():
+                disp = tag[1:] if tag.startswith('#') else tag
+                freqs_display[disp] += cnt
+            freqs_top = dict(freqs_display.most_common(top_n))
+            wc = WordCloud(width=1400, height=420, background_color="#0e0814",
+                           colormap="PuRd", prefer_horizontal=0.7, max_words=top_n)
+            wc.generate_from_frequencies(freqs_top)
             fig_wc, ax = plt.subplots(figsize=(14,4))
-            fig_wc.patch.set_facecolor("#141720"); ax.set_facecolor("#141720")
+            fig_wc.patch.set_facecolor("#0e0814"); ax.set_facecolor("#0e0814")
             ax.imshow(wc, interpolation="bilinear"); ax.axis("off")
             st.pyplot(fig_wc, use_container_width=True)
             plt.close(fig_wc)
+
+            # (table view removed — showing an expanded word cloud only)
         else:
             st.info("No hashtag data in current filter.")
 
-    sec(f"All Posts by @{handle}  ({len(handle_posts)} total)")
+    sec(f"All Posts by {handle}  ({len(handle_posts)} total)")
     show_cols = [c for c in ["Post_ID","Post_Date","Likes","Comments",
                               "Engagement","Hashtags"] if c in handle_posts.columns]
     disp = handle_posts.sort_values("Post_Date", ascending=False)[show_cols].copy()
@@ -1079,157 +1381,109 @@ elif page == "Post Analytics":
         disp["Post_Date"] = disp["Post_Date"].dt.strftime("%Y-%m-%d")
     st.dataframe(disp.reset_index(drop=True), use_container_width=True, height=300)
 
+
 # ==========================================================
 # PAGE 4 — AI LEAD SCORING
 # ==========================================================
-elif page == "AI Lead Scoring":
+elif page == "Lead Scoring":
     hq  = (leads["Lead_Quality"]=="high").sum()
     med = (leads["Lead_Quality"]=="medium").sum()
     low = (leads["Lead_Quality"]=="low").sum()
     tot = max(len(leads),1)
 
     st.markdown(
-        f'<p style="color:#5c6488;font-size:13px;margin-bottom:1rem">'
+        f'<p style="color:#6b4fa0;font-size:13px;margin-bottom:1rem">'
         f'AI-driven outreach prioritisation — score, segment, and act · '
-        f'<b style="color:#4f8ef7">{len(leads):,} records in view</b></p>',
+        f'<b style="color:#d8b4fe">{len(leads):,} records in view</b></p>',
         unsafe_allow_html=True)
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(kpi("🔥 High Priority",  fmt(hq),  f"{hq/tot*100:.1f}% · Contact now","#34d399"), unsafe_allow_html=True)
-    k2.markdown(kpi("⏳ Medium Priority", fmt(med), f"{med/tot*100:.1f}% · Nurture",   "#fbbf24"), unsafe_allow_html=True)
-    k3.markdown(kpi("🗑 Low Priority",    fmt(low), f"{low/tot*100:.1f}% · Ignore",    "#f87171"), unsafe_allow_html=True)
-    k4.markdown(kpi("Avg Lead Score",  f"{leads['Lead_Score'].mean():.1f}",
-                    "out of 100 · current view", "#4f8ef7"), unsafe_allow_html=True)
-
-#     with st.expander("🧮 How is Lead Score calculated?", expanded=False):
-#         st.markdown("""
-# ```
-# Step 1 — Raw Score (0 to ~68)
-#   Engagement_Rate  × 0.40   →  rewards active audiences
-#   Follower_Count/2M × 30    →  capped at 2M followers
-#   Avg Sentiment norm × 20   →  from post_metrics.csv  (-1 to +1 → 0 to 20)
-#   SaaS Relevance   × 10     →  from category_dim.csv
-
-# Step 2 — Normalise to 0–100
-#   Lead_Score = (raw − min) / (max − min) × 100
-
-# Step 3 — Quality Tier (fixed thresholds on 0–100 scale)
-#   High   : Score > 60   (~21% of influencers)
-#   Medium : 30 < Score ≤ 60   (~52% of influencers)
-#   Low    : Score ≤ 30   (~28% of influencers)
-# ```""")
+    k1.markdown(kpi("🔥 High Priority",  fmt(hq),  f"{hq/tot*100:.1f}% · Contact now",
+                    "#4ade80","#22c55e", int(hq/tot*100)), unsafe_allow_html=True)
+    k2.markdown(kpi("⏳ Medium Priority", fmt(med), f"{med/tot*100:.1f}% · Nurture",
+                    "#fbbf24","#f59e0b", int(med/tot*100)), unsafe_allow_html=True)
+    k3.markdown(kpi("🗑 Low Priority",    fmt(low), f"{low/tot*100:.1f}% · Ignore",
+                    "#f87171","#ef4444", int(low/tot*100)), unsafe_allow_html=True)
+    k4.markdown(kpi("Avg Lead Score",    f"{leads['Lead_Score'].mean():.1f}",
+                    "out of 100 · current view", "#a855f7","#ec4899",
+                    int(leads['Lead_Score'].mean())), unsafe_allow_html=True)
 
     sec("Pipeline Funnel & Score Distribution")
     ch1, ch2 = st.columns([2, 3])
 
     with ch1:
-        desc("<b>Pipeline Funnel</b> — shows the narrowing of your lead pool from "
-             "all influencers → medium+high quality → high quality only. "
-             "Each stage shows the count and % drop-off from the top.")
+        desc("<b>Pipeline Funnel</b> — the narrowing of your lead pool from "
+             "all influencers → medium only → high only.")
         funnel = pd.DataFrame({
-            "Stage":["All Leads","Med ","High Only"],
+            "Stage":["All Leads","Medium","High Only"],
             "Count":[tot, med, hq]})
         fig = go.Figure(go.Funnel(
             y=funnel["Stage"], x=funnel["Count"],
-            marker_color=["#1d4ed8","#fbbf24","#34d399"],
+            marker_color=["#2d1555","#fbbf24","#4ade80"],
             textinfo="value+percent initial",
-            connector=dict(fillcolor="#0d0f14")))
+            connector=dict(fillcolor="#0e0814")))
         dark(fig, 300)
         fig.update_layout(title=dict(text="Lead Pipeline Funnel",
-                                      font=dict(size=12,color="#5c6488")))
+                                      font=dict(size=12,color="#6b4fa0")))
         st.plotly_chart(fig, use_container_width=True)
 
     with ch2:
-        desc("<b>Score Distribution Histogram</b> — each bar shows how many influencers "
-             "fall in that score range. The KDE curve (smooth line) shows the density. "
-             "Dashed vertical lines at 30 and 60 mark the Low/Medium/High quality thresholds. "
-             "A right-skewed distribution means most influencers are medium quality.")
+        desc("<b>Score Distribution Histogram</b> — each bar shows influencer count per score range. "
+             "KDE curve shows density. Dashed lines at 30 and 60 mark quality thresholds.")
         fig_score = go.Figure()
-        palette = {"high": "#34d399", "medium": "#fbbf24", "low": "#f87171"}
-
-        # Use consistent bins across tiers so bars align visually like seaborn.
+        palette = {"high":"#4ade80","medium":"#fbbf24","low":"#f87171"}
         nbins = 30
         bin_edges = np.linspace(0, 100, nbins + 1)
         bin_width = bin_edges[1] - bin_edges[0]
-
-        # Precompute max bin count to fix y-axis (prevents KDE/stacking from inflating scale).
         max_bin_count = 0
         hist_counts = {}
         for quality in palette.keys():
-            subset = leads[leads["Lead_Quality"] == quality]["Lead_Score"].dropna().to_numpy()
+            subset = leads[leads["Lead_Quality"]==quality]["Lead_Score"].dropna().to_numpy()
             if len(subset) > 0:
                 counts, _ = np.histogram(subset, bins=bin_edges)
                 hist_counts[quality] = (counts, subset)
                 max_bin_count = max(max_bin_count, counts.max())
 
-        # Add histogram traces and KDE lines scaled to histogram counts.
         for quality, color in palette.items():
             data = hist_counts.get(quality)
-            if not data:
-                continue
+            if not data: continue
             counts, subset = data
-            # Histogram (explicit binning to match seaborn appearance)
             fig_score.add_trace(go.Histogram(
                 x=subset,
                 xbins=dict(start=bin_edges[0], end=bin_edges[-1], size=bin_width),
                 name=quality.title(),
-                marker=dict(color=color, line=dict(color="#0d0f14", width=1)),
+                marker=dict(color=color, line=dict(color="#0e0814", width=1)),
                 opacity=0.65,
-                hovertemplate=(
-                    "<b>%{fullData.name}</b><br>"
-                    "Score: %{x:.1f}<br>"
-                    "Count: %{y}<extra></extra>"
-                )
-            ))
-
-            # KDE overlay (scale density to histogram counts)
+                hovertemplate="<b>%{fullData.name}</b><br>Score: %{x:.1f}<br>Count: %{y}<extra></extra>"))
             if len(subset) >= 2 and np.unique(subset).size > 1:
                 x_kde = np.linspace(0, 100, 300)
                 kde = gaussian_kde(subset)
                 y_density = kde(x_kde)
-                y_scaled = y_density * len(subset) * bin_width
+                y_scaled  = y_density * len(subset) * bin_width
                 fig_score.add_trace(go.Scatter(
-                    x=x_kde,
-                    y=y_scaled,
-                    mode="lines",
+                    x=x_kde, y=y_scaled, mode="lines",
                     line=dict(color=color, width=2.6),
-                    name=f"{quality.title()} KDE",
-                    hovertemplate=(
-                        "<b>%{fullData.name}</b><br>"
-                        "Score: %{x:.1f}<br>"
-                        "Est Count: %{y:.1f}<extra></extra>"
-                    ),
-                    showlegend=False
-                ))
+                    name=f"{quality.title()} KDE", showlegend=False,
+                    hovertemplate="<b>%{fullData.name}</b><br>Score: %{x:.1f}<br>Est Count: %{y:.1f}<extra></extra>"))
 
-        fig_score.add_vline(x=30, line_dash="dash", line_color="#5c6488", line_width=1)
-        fig_score.add_vline(x=60, line_dash="dash", line_color="#5c6488", line_width=1)
-
-        # Keep background/theme consistent
+        fig_score.add_vline(x=30, line_dash="dash", line_color="#3d1f70", line_width=1)
+        fig_score.add_vline(x=60, line_dash="dash", line_color="#3d1f70", line_width=1)
         dark(fig_score, 360)
         fig_score.update_layout(
             title=dict(text="Lead Score Distribution by Quality Tier",
-                       font=dict(size=12, color="#5c6488")),
-            barmode="overlay",
-            hovermode="closest",
-            xaxis_title="Lead Score",
-            yaxis_title="Count",
-            yaxis=dict(range=[0, max(10, int(max_bin_count * 1.15))]),
-            legend=dict(orientation="h", y=1.05, x=1, xanchor="right")
-        )
-        fig_score.add_annotation(x=15, y=1.0, yref="paper", text="Low", showarrow=False,
-                                 font=dict(color="#f87171", size=10, family="DM Mono"))
-        fig_score.add_annotation(x=45, y=1.0, yref="paper", text="Medium", showarrow=False,
-                                 font=dict(color="#fbbf24", size=10, family="DM Mono"))
-        fig_score.add_annotation(x=75, y=1.0, yref="paper", text="High", showarrow=False,
-                                 font=dict(color="#34d399", size=10, family="DM Mono"))
+                       font=dict(size=12,color="#6b4fa0")),
+            barmode="overlay", hovermode="closest",
+            xaxis_title="Lead Score", yaxis_title="Count",
+            yaxis=dict(range=[0, max(10, int(max_bin_count*1.15))]),
+            legend=dict(orientation="h", y=1.05, x=1, xanchor="right"))
+        for lbl, xpos, col in [("Low",15,"#f87171"),("Medium",45,"#fbbf24"),("High",75,"#4ade80")]:
+            fig_score.add_annotation(x=xpos, y=1.0, yref="paper", text=lbl, showarrow=False,
+                                     font=dict(color=col, size=10, family="DM Mono"))
         st.plotly_chart(fig_score, use_container_width=True)
 
     sec("Score Distribution by Category")
-    desc("<b>Violin Chart</b> — each violin shows the full distribution of lead scores for "
-         "one category. The wider the violin at a score, the more influencers have that score. "
-         "The white box inside = 25th–75th percentile (middle 50%). "
-         "The white line = median score. Taller violins = wider score range in that category.")
+    desc("<b>Violin Chart</b> — each violin shows the full lead score distribution per category. "
+         "Wider = more influencers at that score. White box = IQR. White line = median.")
     if "Category_Name" in leads.columns:
         fig_v = go.Figure()
         for cat, color in CAT_CLR.items():
@@ -1238,22 +1492,19 @@ elif page == "AI Lead Scoring":
                 fig_v.add_trace(go.Violin(
                     x=[cat]*len(subset), y=subset,
                     name=cat, line_color=color,
-                    fillcolor=color, opacity=0.35,
+                    fillcolor=color, opacity=0.30,
                     box_visible=True, meanline_visible=True,
                     points=False))
         dark(fig_v, 300)
         fig_v.update_layout(
             title=dict(text="Lead Score Violin — spread and median per category",
-                       font=dict(size=12,color="#5c6488")),
+                       font=dict(size=12,color="#6b4fa0")),
             showlegend=False, violingap=0.25)
         st.plotly_chart(fig_v, use_container_width=True)
 
     sec("🎯 Priority Outreach List")
     desc("<b>Priority Outreach Table</b> — top influencers ranked by Lead Score. "
-         "Use the dropdowns to filter by category or action type. "
-         "The <b>Action</b> column tells you exactly what to do: "
-         "🔥 Contact Now (high quality), ⏳ Nurture (medium), 🗑 Ignore (low). "
-         "Use the Export button to download the list as a CSV for your sales team.")
+         "🔥 Contact Now · ⏳ Nurture · 🗑 Ignore. Export as CSV for your sales team.")
 
     f1, f2, f3 = st.columns(3)
     cat_opts = ["All"] + (sorted(leads["Category_Name"].dropna().unique().tolist())
@@ -1291,30 +1542,59 @@ elif page == "About":
     total_posts = len(posts_full)
     cats_count  = leads_full["Category_Name"].nunique() if "Category_Name" in leads_full.columns else 5
 
+    def _safe_csv_rows(name):
+        p = os.path.join(_data_dir(), name)
+        if not os.path.exists(p):
+            return 0
+        try:
+            return len(pd.read_csv(p))
+        except Exception:
+            return 0
+
+    date_dim_rows = _safe_csv_rows("date_dim.csv")
+    lead_scoring_rows = _safe_csv_rows("lead_scoring.csv")
+
     st.markdown(f"""
     <div class="about-hero">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;">
         <div>
-          <div style="font-size:1.6rem;font-weight:700;color:#e8eaf6;margin-bottom:6px;">📱 InstaScribe</div>
-          <div style="font-size:13px;color:#9ba3c4;max-width:640px;line-height:1.7;">
-            InstaScribe is an advanced <b style="color:#e8eaf6">AI-powered influencer intelligence platform</b>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="width:40px;height:40px;border-radius:12px;
+                        background:linear-gradient(135deg,#a855f7,#ec4899);
+                        display:flex;align-items:center;justify-content:center;font-size:20px">📱</div>
+            <div>
+              <div style="font-size:1.5rem;font-weight:700;color:#f0e6ff">InstaScribe</div>
+              <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.12em">Creator Intelligence Platform</div>
+            </div>
+          </div>
+          <div style="font-size:13px;color:#9b7ec8;max-width:640px;line-height:1.7;">
+            InstaScribe is an <b style="color:#e8d5ff">AI-powered influencer intelligence platform</b>
             built with Streamlit and Python. It helps founders, agencies, and marketing teams detect
             high-quality influencer leads, analyse engagement authenticity, track individual posts, and
             prioritise outreach — all powered by real CSV data.
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
-          <div style="background:#1c2030;border:1px solid #2a2f45;border-radius:10px;padding:12px 18px;text-align:center;">
-            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:600;color:#4f8ef7">{total_inf:,}</div>
-            <div style="font-size:10px;color:#5c6488;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Influencers</div>
+          <div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;
+                      border-radius:12px;padding:14px 20px;text-align:center;">
+            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;
+                        background:linear-gradient(135deg,#a855f7,#ec4899);
+                        -webkit-background-clip:text;-webkit-text-fill-color:transparent">{total_inf:,}</div>
+            <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Influencers</div>
           </div>
-          <div style="background:#1c2030;border:1px solid #2a2f45;border-radius:10px;padding:12px 18px;text-align:center;">
-            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:600;color:#34d399">{total_posts:,}</div>
-            <div style="font-size:10px;color:#5c6488;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Posts</div>
+          <div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;
+                      border-radius:12px;padding:14px 20px;text-align:center;">
+            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;
+                        background:linear-gradient(135deg,#818cf8,#a855f7);
+                        -webkit-background-clip:text;-webkit-text-fill-color:transparent">{total_posts:,}</div>
+            <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Posts</div>
           </div>
-          <div style="background:#1c2030;border:1px solid #2a2f45;border-radius:10px;padding:12px 18px;text-align:center;">
-            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:600;color:#fbbf24">{cats_count}</div>
-            <div style="font-size:10px;color:#5c6488;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Categories</div>
+          <div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;
+                      border-radius:12px;padding:14px 20px;text-align:center;">
+            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;
+                        background:linear-gradient(135deg,#fbbf24,#f59e0b);
+                        -webkit-background-clip:text;-webkit-text-fill-color:transparent">{cats_count}</div>
+            <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Categories</div>
           </div>
         </div>
       </div>
@@ -1327,14 +1607,14 @@ elif page == "About":
         <div class="about-card about-card-blue">
           <div class="about-title">📊 Dashboard Sections</div>
           <hr class="about-divider">
-          <div class="about-li"><div class="about-li-dot" style="--dot:#4f8ef7"></div>
-            <span><b style="color:#e8eaf6">Executive Overview</b> — KPIs, smart insights, engagement trend, quality donut, category comparison selector</span></div>
-          <div class="about-li"><div class="about-li-dot" style="--dot:#34d399"></div>
-            <span><b style="color:#e8eaf6">Lead Intelligence</b> — Followers vs ER scatter, Avg Accounts Following bars, tier stacked bar, ER box plot, ranked table</span></div>
-          <div class="about-li"><div class="about-li-dot" style="--dot:#a78bfa"></div>
-            <span><b style="color:#e8eaf6">Post Analytics</b> — Post Inspector (search by Post ID or Handle) + monthly engagement, quadrant scatter, heatmap, hashtag cloud</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#818cf8"></div>
+            <span><b style="color:#e8d5ff">Executive Overview</b> — KPIs, smart insights, engagement trend, quality donut, category comparison</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div>
+            <span><b style="color:#e8d5ff">Lead Intelligence</b> — Followers vs ER scatter, Avg Accounts Following bars, tier stack, ER chart, ranked table</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#c084fc"></div>
+            <span><b style="color:#e8d5ff">Post Analytics</b> — Post Inspector (search by ID or Handle) + monthly engagement, quadrant scatter, heatmap, hashtag cloud</span></div>
           <div class="about-li"><div class="about-li-dot" style="--dot:#f87171"></div>
-            <span><b style="color:#e8eaf6">AI Lead Scoring</b> — Pipeline funnel, seaborn histogram with KDE, violin chart, priority outreach export</span></div>
+            <span><b style="color:#e8d5ff">Lead Scoring</b> — Pipeline funnel, score histogram with KDE, violin chart, priority outreach export</span></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1343,20 +1623,18 @@ elif page == "About":
         <div class="about-card about-card-green">
           <div class="about-title">🔑 Key Features</div>
           <hr class="about-divider">
-          <div class="about-li"><div class="about-li-dot" style="--dot:#34d399"></div>
-            <span>Multi-filter sidebar — category, quality, ER, followers, tier, date, year</span></div>
-          <div class="about-li"><div class="about-li-dot" style="--dot:#34d399"></div>
-            <span><b style="color:#e8eaf6">Engagement Quality KPI</b> shown as Positive / Neutral / Negative — no confusing decimals</span></div>
-          <div class="about-li"><div class="about-li-dot" style="--dot:#34d399"></div>
-            <span><b style="color:#e8eaf6">Avg Accounts Following</b> replaces FF Ratio — whole number, instantly readable</span></div>
-          <div class="about-li"><div class="about-li-dot" style="--dot:#34d399"></div>
-            <span><b style="color:#e8eaf6">Category Comparison</b> — multiselect up to 3 categories for side-by-side ER, followers, and lead quality charts</span></div>
-          <div class="about-li"><div class="about-li-dot" style="--dot:#34d399"></div>
-            <span><b style="color:#e8eaf6">Post Inspector</b> — search any Post ID or Handle, shows engagement history with selected post ★ highlighted</span></div>
-          <div class="about-li"><div class="about-li-dot" style="--dot:#34d399"></div>
-            <span>All AI Lead Scoring charts include inline <b style="color:#e8eaf6">descriptions</b> explaining what each visual means</span></div>
-          <div class="about-li"><div class="about-li-dot" style="--dot:#34d399"></div>
-            <span>Priority outreach list with one-click <b style="color:#e8eaf6">CSV export</b></span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div>
+            <span><b style="color:#e8d5ff">Multi Filter Sidebar</b> category, quality, ER, followers, tier, date, year</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div>
+            <span><b style="color:#e8d5ff">Engagement Quality KPI</b> — shown as Positive / Neutral / Negative</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div>
+            <span><b style="color:#e8d5ff">Category tags</b> in header — quick at-a-glance category overview</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div>
+            <span><b style="color:#e8d5ff">Category Comparison</b> — multiselect up to 3 for side-by-side charts</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div>
+            <span><b style="color:#e8d5ff">Post Inspector</b> — search any Post ID or Handle with ★ highlight</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div>
+            <span>Priority outreach list with one-click <b style="color:#e8d5ff">CSV export</b></span></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1374,11 +1652,17 @@ elif page == "About":
             <span><span class="about-tag">post_metrics.csv</span> — {total_posts:,} records · likes, comments, hashtags</span></div>
           <div class="about-li"><div class="about-li-dot" style="--dot:#fbbf24"></div>
             <span><span class="about-tag">category_dim.csv</span> — {cats_count} categories · SaaS relevance weights</span></div>
-          <div style="margin-top:14px;padding-top:12px;border-top:1px solid #1c2030">
-            <div style="font-size:10px;color:#5c6488;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Join Keys</div>
-            <div style="font-size:12px;color:#9ba3c4;line-height:1.8;">
-              <span class="about-tag">influencer_master</span> → <span class="about-tag">category_dim</span> via <b style="color:#e8eaf6">Category_ID</b><br>
-              <span class="about-tag">post_metrics</span> → <span class="about-tag">influencer_master</span> via <b style="color:#e8eaf6">Handle</b>
+                    <div class="about-li"><div class="about-li-dot" style="--dot:#fbbf24"></div>
+                        <span><span class="about-tag">date_dim.csv</span> — {date_dim_rows:,} records · calendar attributes (day, week, month, year)</span></div>
+                    <div class="about-li"><div class="about-li-dot" style="--dot:#fbbf24"></div>
+                        <span><span class="about-tag">lead_scoring.csv</span> — {lead_scoring_rows:,} records · scored leads with quality labels</span></div>
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid #2a1040">
+            <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Join Keys</div>
+            <div style="font-size:12px;color:#9b7ec8;line-height:1.8;">
+              <span class="about-tag">influencer_master</span> → <span class="about-tag">category_dim</span> via <b style="color:#e8d5ff">Category_ID</b><br>
+                            <span class="about-tag">post_metrics</span> → <span class="about-tag">influencer_master</span> via <b style="color:#e8d5ff">Handle</b><br>
+                            <span class="about-tag">post_metrics</span> → <span class="about-tag">date_dim</span> via <b style="color:#e8d5ff">Post_Date</b><br>
+                            <span class="about-tag">lead_scoring</span> → <span class="about-tag">influencer_master</span> via <b style="color:#e8d5ff">Handle</b>
             </div>
           </div>
         </div>
@@ -1389,27 +1673,29 @@ elif page == "About":
         <div class="about-card about-card-pink">
           <div class="about-title">🤖 Lead Score Formula</div>
           <hr class="about-divider">
-          <div style="font-family:'DM Mono',monospace;font-size:11.5px;color:#9ba3c4;
-            background:#0d0f14;border:1px solid #1c2030;border-radius:8px;
+          <div style="font-family:'DM Mono',monospace;font-size:11.5px;color:#9b7ec8;
+            background:#0e0814;border:1px solid #2d1555;border-radius:8px;
             padding:14px 16px;line-height:2;">
-            <span style="color:#5c6488"># Weighted raw score</span><br>
-            ER_score   = Engagement_Rate × <span style="color:#4f8ef7">0.40</span><br>
-            Fol_score  = clip(Followers, 2M) / 2M × <span style="color:#34d399">30</span><br>
-            Sent_score = norm(Avg_Sentiment) × <span style="color:#a78bfa">20</span><br>
+            <span style="color:#3d1f70"># Weighted raw score</span><br>
+            ER_score   = Engagement_Rate × <span style="color:#818cf8">0.40</span><br>
+            Fol_score  = clip(Followers, 2M) / 2M × <span style="color:#4ade80">30</span><br>
+            Sent_score = norm(Avg_Sentiment) × <span style="color:#c084fc">20</span><br>
             SaaS_score = SaaS_Relevance × <span style="color:#fbbf24">10</span><br><br>
-            <span style="color:#5c6488"># Normalise 0 → 100</span><br>
-            Score = (raw − min) / (max − min) × <span style="color:#f472b6">100</span><br><br>
-            <span style="color:#34d399">High</span> ≥ 60 &nbsp;·&nbsp;
+            <span style="color:#3d1f70"># Normalise 0 → 100</span><br>
+            Score = (raw − min) / (max − min) × <span style="color:#ec4899">100</span><br><br>
+            <span style="color:#4ade80">High</span> ≥ 60 &nbsp;·&nbsp;
             <span style="color:#fbbf24">Medium</span> 30–59 &nbsp;·&nbsp;
             <span style="color:#f87171">Low</span> &lt; 30
           </div>
         </div>
         """, unsafe_allow_html=True)
 
-# ── FOOTER ────────────────────────────────────────────────
+# ── FOOTER ─────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown(
-    '<div style="text-align:center;font-size:11px;color:#FBF7FF;'
-    'font-family:\'DM Mono\',monospace">'
-    'InstaScribe · AI Influencer Intelligence · Streamlit + Plotly + Seaborn</div>',
+    '<div style="text-align:center;font-size:11px;'
+    'font-family:\'DM Mono\',monospace;'
+    'background:linear-gradient(90deg,#a855f7,#ec4899);'
+    '-webkit-background-clip:text;-webkit-text-fill-color:transparent">'
+    'InstaScribe · Creator Intelligence · Streamlit + Plotly + Seaborn</div>',
     unsafe_allow_html=True)
