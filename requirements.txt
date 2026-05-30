@@ -7,3 +7,5 @@ seaborn
 plotly
 wordcloud
 streamlit-option-menu
+streamlit-authenticator
+PyYAML
