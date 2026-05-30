@@ -45,8 +45,8 @@ def _default_auth_store():
         },
         "cookie": {
             "name": "instascribe_auth",
-            "key": "change-this-secret-key",
-            "expiry_days": 7,
+            "key": "9f2c7a8d4b1e6c3f0a5d8e7b1c9f4a2d",
+            "expiry_days": 1,
         },
         "preauthorized": {"emails": []},
     }
@@ -319,6 +319,9 @@ authenticator = stauth.Authenticate(
     auth_store['cookie']['expiry_days'],
     auto_hash=False,
 )
+
+# Restore the session from the auth cookie before the login gate runs.
+authenticator.login(location="unrendered")
 
 name = st.session_state.get('name')
 auth_status = st.session_state.get('authentication_status')
