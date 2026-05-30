@@ -2,7 +2,9 @@ import json
 import os, sys
 import sqlite3
 from datetime import datetime, timezone
+from datetime import timedelta
 from pathlib import Path
+import uuid
 import streamlit as st
 import streamlit_authenticator as stauth
 import pandas as pd
@@ -117,6 +119,16 @@ def _ensure_auth_db():
                 details TEXT NOT NULL DEFAULT '{}'
             )
         """)
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS active_sessions (
+                session_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                name TEXT,
+                role TEXT,
+                started_at TEXT NOT NULL,
+                last_seen TEXT NOT NULL
+            )
+        """)
 
 
 def _seed_auth_db(yaml_data):
@@ -190,6 +202,71 @@ def _refresh_auth_store_cache():
     global auth_store
     auth_store = _load_auth_store()
     return auth_store
+
+
+def _ensure_session_id():
+    if "session_uuid" not in st.session_state:
+        st.session_state["session_uuid"] = uuid.uuid4().hex
+    return st.session_state["session_uuid"]
+
+
+def _touch_active_session(username_value, name_value=None, role_value=None):
+    session_id = _ensure_session_id()
+    now = datetime.now(timezone.utc).isoformat()
+    with _sqlite_connection() as connection:
+        existing = connection.execute(
+            "SELECT started_at FROM active_sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        started_at = existing[0] if existing else now
+        connection.execute(
+            """
+            INSERT INTO active_sessions (session_id, username, name, role, started_at, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET
+                username=excluded.username,
+                name=excluded.name,
+                role=excluded.role,
+                last_seen=excluded.last_seen
+            """,
+            (session_id, username_value, name_value or "", role_value or "", started_at, now),
+        )
+
+
+def _clear_active_session(_=None):
+    session_id = st.session_state.get("session_uuid")
+    if not session_id:
+        return
+    with _sqlite_connection() as connection:
+        connection.execute("DELETE FROM active_sessions WHERE session_id = ?", (session_id,))
+
+
+def _prune_active_sessions(max_age_minutes=10):
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)).isoformat()
+    with _sqlite_connection() as connection:
+        connection.execute("DELETE FROM active_sessions WHERE last_seen < ?", (cutoff,))
+
+
+def _get_active_sessions(max_age_minutes=10):
+    _prune_active_sessions(max_age_minutes=max_age_minutes)
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)).isoformat()
+    with _sqlite_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT session_id, username, name, role, started_at, last_seen
+            FROM active_sessions
+            WHERE last_seen >= ?
+            ORDER BY last_seen DESC
+            """,
+            (cutoff,),
+        ).fetchall()
+    return rows
+
+
+def _refresh_admin_view(tab_name=None):
+    if tab_name:
+        st.session_state["admin_page"] = tab_name
+    st.rerun()
 
 
 def _hash_password(password):
@@ -1095,6 +1172,8 @@ elif auth_status is None:
 current_user = auth_store["credentials"]["usernames"].get((username or "").lower(), {})
 is_admin = current_user.get("role") == "admin"
 
+_touch_active_session(username, name, current_user.get("role", "member"))
+
 # ── Shared helper functions ────────────────────────────────────
 def fmt(n):
     try: n = float(n)
@@ -1157,14 +1236,8 @@ def grad_divider():
 # ADMIN-ONLY VIEW
 # ══════════════════════════════════════════════════════════════════
 if is_admin:
-
-    # ── Session tracking ──────────────────────────────────────────
-    if "admin_session_start" not in st.session_state:
-        st.session_state["admin_session_start"] = datetime.now(timezone.utc).isoformat()
-    if "active_sessions" not in st.session_state:
-        st.session_state["active_sessions"] = {}
-    st.session_state["active_sessions"][username] = datetime.now(timezone.utc).isoformat()
-    active_session_count = len(st.session_state["active_sessions"])
+    active_sessions = _get_active_sessions()
+    active_session_count = len(active_sessions)
 
     # ── Sidebar ───────────────────────────────────────────────────
     with st.sidebar:
@@ -1181,7 +1254,7 @@ if is_admin:
             '</div></div></div>',
             unsafe_allow_html=True)
         st.write(f'Welcome **{name}**')
-        authenticator.logout('Logout', 'sidebar')
+        authenticator.logout('Logout', 'sidebar', callback=_clear_active_session)
 
     # ── Header ────────────────────────────────────────────────────
     st.markdown(
@@ -1241,12 +1314,18 @@ if is_admin:
     with tab_users:
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
-        # Search bar
-        search_q = st.text_input(
-            "🔍 Search by username or email",
-            placeholder="Type username or email…",
-            key="admin_search"
-        )
+        # Search bar + refresh button
+        search_col, refresh_col = st.columns([0.88, 0.12], gap="small")
+        with search_col:
+            search_q = st.text_input(
+                "🔍 Search by username or email",
+                placeholder="Type username or email…",
+                key="admin_search"
+            )
+        with refresh_col:
+            st.markdown('<div style="height:1.6rem"></div>', unsafe_allow_html=True)
+            if st.button("🔄 Refresh", key="admin_user_refresh", use_container_width=True, help="Refresh User Store"):
+                _refresh_admin_view("users")
 
         # Build rows
         user_rows = []
@@ -1466,34 +1545,33 @@ if is_admin:
     with tab_sessions:
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
-        sessions = st.session_state.get("active_sessions", {})
+        sessions = _get_active_sessions()
         if not sessions:
             st.info("No active sessions recorded in this server process.")
         else:
             sec(f"🖥️ Active Sessions — {len(sessions)} online")
-            sess_rows = []
-            for sess_user, sess_time in sessions.items():
-                rec = auth_store["credentials"]["usernames"].get(sess_user, {})
-                sess_rows.append({
-                    "Username":    sess_user,
-                    "Name":        rec.get("name","—"),
-                    "Role":        rec.get("role","member"),
-                    "Email":       rec.get("email","—"),
-                    "Last Active": sess_time[:19].replace("T"," ") + " UTC",
-                })
-            sess_df = pd.DataFrame(sess_rows)
+            sess_df = pd.DataFrame([
+                {
+                    "Username": row["username"],
+                    "Name": row["name"],
+                    "Role": row["role"],
+                    "Started At": row["started_at"],
+                    "Last Seen": row["last_seen"],
+                }
+                for row in sessions
+            ])
             st.dataframe(sess_df, use_container_width=True, hide_index=True)
 
             st.markdown(
                 '<div class="insight" style="--ac:#4ade80;margin-top:12px">'
-                '💡 <b>Session tracking</b> is scoped to the current server process. '
-                'Sessions are recorded when any authenticated user loads a page. '
-                'Restarting the Streamlit server clears all session records.</div>',
+                '💡 <b>Session tracking</b> is shared across tabs through SQLite. '
+                'Active sessions are refreshed whenever an authenticated user loads a page. '
+                'Old sessions are pruned automatically after inactivity.</div>',
                 unsafe_allow_html=True
             )
 
         if st.button("🔄 Refresh Sessions", use_container_width=False):
-            st.rerun()
+            _refresh_admin_view("sessions")
 
     st.stop()
 
@@ -1518,7 +1596,7 @@ with st.sidebar:
         unsafe_allow_html=True)
 
     st.write(f'Welcome **{name}**')
-    authenticator.logout('Logout', 'sidebar')
+    authenticator.logout('Logout', 'sidebar', callback=_clear_active_session)
 
     st.markdown('<div style="font-size:15px;font-weight:600;color:#a855f7;'
                 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">🎛 Filters</div>',
