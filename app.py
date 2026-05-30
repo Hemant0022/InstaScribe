@@ -177,6 +177,12 @@ def _read_users_from_db():
     return users
 
 
+def _user_count_in_db():
+    with _sqlite_connection() as connection:
+        row = connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()
+    return int(row["count"] if row else 0)
+
+
 def _save_auth_store(data):
     with AUTH_STORE_PATH.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
@@ -188,7 +194,8 @@ def _load_auth_store():
     yaml_data.setdefault("cookie", _cookie_config(defaults["cookie"]))
     yaml_data.setdefault("preauthorized", defaults["preauthorized"])
     _ensure_auth_db()
-    _seed_auth_db(yaml_data)
+    if _user_count_in_db() == 0:
+        _seed_auth_db(yaml_data)
     data = {
         "credentials": {"usernames": _read_users_from_db()},
         "cookie": yaml_data["cookie"],
