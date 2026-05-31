@@ -1,6 +1,8 @@
 import json
+import html
 import os, sys
 import sqlite3
+import re
 from datetime import datetime, timezone
 from datetime import timedelta
 from pathlib import Path
@@ -19,6 +21,19 @@ import seaborn as sns
 from scipy.stats import gaussian_kde
 from wordcloud import WordCloud
 from streamlit_option_menu import option_menu
+
+# ── load .env for local development ───────────────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=False)
+    load_dotenv(override=False)
+except ImportError:
+    pass
+
+try:
+    from groq import Groq
+except Exception:
+    Groq = None
 
     
 st.set_page_config(page_title="InstaScribe", page_icon="📱",
@@ -826,6 +841,261 @@ def load_data():
     mc   = [c for c in ["Handle","Category_Name","Lead_Quality","Lead_Score"] if c in inf.columns]
     post = post.merge(inf[mc], on="Handle", how="left")
     return inf, post
+
+
+def _groq_api_key():
+    api_key = _secret_value("groq", "api_key", default=None) or os.getenv("GROQ_API_KEY")
+    return api_key.strip() if isinstance(api_key, str) else api_key
+
+
+def _groq_model_name():
+    return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
+def _groq_client():
+    api_key = _groq_api_key()
+    if not api_key or Groq is None:
+        return None
+    return Groq(api_key=api_key)
+
+
+def _call_groq(system_prompt, user_prompt):
+    """Single Groq call. Returns (answer_text, None) or (None, error_string)."""
+    client = _groq_client()
+    if client is None:
+        return None, ("⚠️ Groq API not configured. "
+                      "Add GROQ_API_KEY to your .env file or set groq.api_key in secrets.toml.")
+    try:
+        completion = client.chat.completions.create(
+            model=_groq_model_name(),
+            temperature=0.35,
+            max_tokens=1024,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt},
+            ],
+        )
+        return completion.choices[0].message.content, None
+    except Exception as exc:
+        return None, f"Groq error: {exc}"
+
+
+def _clean_token(text):
+    return re.sub(r"[^a-z0-9]+", "", str(text).lower())
+
+
+def _find_entity_mentions(question, posts_df, leads_df):
+    question_text = str(question or "").lower()
+    compact_question = _clean_token(question_text)
+
+    post_matches = []
+    if "Post_ID" in posts_df.columns:
+        for pid in posts_df["Post_ID"].dropna().astype(str).unique().tolist():
+            pid_low = pid.lower()
+            if pid_low in question_text or _clean_token(pid_low) in compact_question:
+                post_matches.append(pid)
+
+    handle_matches = []
+    if "Handle" in posts_df.columns:
+        for handle in posts_df["Handle"].dropna().astype(str).unique().tolist():
+            handle_low = handle.lower().strip()
+            if handle_low in question_text or f"@{handle_low}" in question_text or _clean_token(handle_low) in compact_question:
+                handle_matches.append(handle)
+
+    return list(dict.fromkeys(post_matches))[:5], list(dict.fromkeys(handle_matches))[:5]
+
+
+def _safe_metric_text(value, digits=2):
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return f"{value:.{digits}f}"
+    return str(value)
+
+
+def _profile_context_for_handle(handle, leads_df, posts_df):
+    handle_key = str(handle).strip().lower()
+    lead_row = None
+    if "Handle" in leads_df.columns:
+        matches = leads_df[leads_df["Handle"].astype(str).str.strip().str.lower() == handle_key]
+        if len(matches) > 0:
+            lead_row = matches.iloc[0]
+
+    handle_posts = pd.DataFrame()
+    if "Handle" in posts_df.columns:
+        handle_posts = posts_df[posts_df["Handle"].astype(str).str.strip().str.lower() == handle_key].copy()
+        if len(handle_posts) > 0 and "Post_Date" in handle_posts.columns:
+            handle_posts = handle_posts.sort_values("Post_Date", ascending=False)
+
+    lines = [f"Handle: {handle}"]
+    if lead_row is not None:
+        lines.extend([
+            f"Name: {lead_row.get('Name', '—')}",
+            f"Category: {lead_row.get('Category_Name', '—')}",
+            f"Followers: {_safe_metric_text(lead_row.get('Follower_Count'), 0)}",
+            f"Following: {_safe_metric_text(lead_row.get('Following_Count'), 0)}",
+            f"Engagement Rate: {_safe_metric_text(lead_row.get('Engagement_Rate'))}%",
+            f"Lead Score: {_safe_metric_text(lead_row.get('Lead_Score'))}/100",
+            f"Lead Quality: {lead_row.get('Lead_Quality', '—')}",
+            f"Avg Sentiment: {_safe_metric_text(lead_row.get('Avg_Sentiment'), 3)}",
+        ])
+    else:
+        lines.append("No matching influencer master row was found.")
+
+    if len(handle_posts) > 0:
+        lines.append(f"Total posts: {len(handle_posts)}")
+        preview_cols = [c for c in ["Post_ID", "Post_Date", "Likes", "Comments", "Engagement", "Hashtags"] if c in handle_posts.columns]
+        preview = handle_posts.head(3)[preview_cols].copy()
+        if "Post_Date" in preview.columns:
+            preview["Post_Date"] = preview["Post_Date"].dt.strftime("%Y-%m-%d")
+        lines.append("Recent posts:\n" + preview.to_string(index=False))
+    else:
+        lines.append("No post history found for this handle.")
+
+    return "\n".join(lines)
+
+
+def _profile_context_for_post(post_id, posts_df):
+    post_key = str(post_id).strip().lower()
+    if "Post_ID" not in posts_df.columns:
+        return f"Post ID: {post_id}\nNo post_id column is available in the current dataset."
+
+    matches = posts_df[posts_df["Post_ID"].astype(str).str.strip().str.lower() == post_key]
+    if len(matches) == 0:
+        return f"Post ID: {post_id}\nNo matching post record was found."
+
+    row = matches.iloc[0]
+    lines = [f"Post ID: {row.get('Post_ID', '—')}"]
+    for label, key, digits in [
+        ("Handle", "Handle", None),
+        ("Date", "Post_Date", None),
+        ("Likes", "Likes", 0),
+        ("Comments", "Comments", 0),
+        ("Engagement", "Engagement", 0),
+        ("Sentiment Score", "Sentiment_Score", 3),
+        ("Category", "Category_Name", None),
+        ("Lead Score", "Lead_Score", 1),
+        ("Lead Quality", "Lead_Quality", None),
+    ]:
+        value = row.get(key, "—")
+        if key == "Post_Date" and pd.notna(value):
+            value = pd.to_datetime(value).strftime("%Y-%m-%d")
+        elif digits is not None:
+            value = _safe_metric_text(value, digits)
+        lines.append(f"{label}: {value}")
+
+    if "Hashtags" in row.index and pd.notna(row.get("Hashtags")):
+        lines.append(f"Hashtags: {row.get('Hashtags')}")
+    return "\n".join(lines)
+
+
+def _system_summary_context(leads_df, posts_df):
+    lines = [
+        f"Influencers in scope: {len(leads_df):,}",
+        f"Posts in scope: {len(posts_df):,}",
+    ]
+    if "Lead_Quality" in leads_df.columns and len(leads_df) > 0:
+        quality_counts = leads_df["Lead_Quality"].value_counts(dropna=False).to_dict()
+        lines.append("Lead quality split: " + ", ".join(f"{k}: {v}" for k, v in quality_counts.items()))
+    if "Category_Name" in leads_df.columns and len(leads_df) > 0:
+        category_counts = leads_df["Category_Name"].value_counts().head(5)
+        lines.append("Top categories: " + ", ".join(f"{idx} ({val})" for idx, val in category_counts.items()))
+    if "Lead_Score" in leads_df.columns and len(leads_df) > 0:
+        lines.append(f"Average lead score: {leads_df['Lead_Score'].mean():.1f}/100")
+    if "Engagement_Rate" in leads_df.columns and len(leads_df) > 0:
+        lines.append(f"Average engagement rate: {leads_df['Engagement_Rate'].mean():.2f}%")
+    if "Handle" in posts_df.columns and len(posts_df) > 0 and "Engagement" in posts_df.columns:
+        top_handle = posts_df.groupby("Handle")["Engagement"].sum().idxmax()
+        lines.append(f"Top handle by total engagement: {top_handle}")
+    return "\n".join(lines)
+
+
+def _build_ai_context(question, leads_df, posts_df):
+    post_matches, handle_matches = _find_entity_mentions(question, posts_df, leads_df)
+    blocks = [_system_summary_context(leads_df, posts_df)]
+    if post_matches:
+        blocks.append("Matched post details:\n" + "\n\n".join(_profile_context_for_post(pid, posts_df) for pid in post_matches))
+    if handle_matches:
+        blocks.append("Matched handle details:\n" + "\n\n".join(_profile_context_for_handle(handle, leads_df, posts_df) for handle in handle_matches))
+    if not post_matches and not handle_matches:
+        blocks.append("No direct Post ID or Handle match was detected in the question.")
+    return "\n\n---\n\n".join(blocks), post_matches, handle_matches
+
+
+def _generate_ai_insight(question, leads_df, posts_df):
+    context_text, post_matches, handle_matches = _build_ai_context(question, leads_df, posts_df)
+    client = _groq_client()
+    if client is None:
+        summary = [
+            "Groq API is not configured. Set `groq.api_key` in Streamlit secrets or `GROQ_API_KEY` in the environment.",
+            "",
+            "Local dataset summary:",
+            context_text,
+        ]
+        return "\n".join(summary), post_matches, handle_matches
+
+    system_prompt = (
+        "You are an AI insights assistant for InstaScribe. "
+        "Use only the provided dataset context. "
+        "Return concise, useful answers in plain English with short bullet points when helpful. "
+        "If the user asks about a Post ID or Handle, include the matching details from the context. "
+        "If the answer is not available in the dataset context, say so clearly."
+    )
+    user_prompt = f"User question:\n{question}\n\nDataset context:\n{context_text}"
+
+    completion = client.chat.completions.create(
+        model=_groq_model_name(),
+        temperature=0.3,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+    content = completion.choices[0].message.content if completion and completion.choices else "No response returned by Groq."
+    return content, post_matches, handle_matches
+
+
+def _ai_section_prompt(section, leads_df, posts_df, post_id="", handle="", custom_question=""):
+    context_text, post_matches, handle_matches = _build_ai_context(
+        f"{section} {custom_question} {post_id} {handle}", leads_df, posts_df
+    )
+    section_prompts = {
+        "Executive Summary": (
+            "Give a concise executive summary of the overall system. "
+            "Cover volume, lead quality, engagement, strongest categories/handles, and the key story from the data."
+        ),
+        "Carrier Performance": (
+            "Summarize creator performance and content efficiency. "
+            "Highlight who is performing best, average engagement, and any standout handles in the context."
+        ),
+        "Category Analysis": (
+            "Analyze category-level performance. "
+            "Compare categories by lead quality, engagement rate, lead score, and which categories deserve priority."
+        ),
+        "Risk Analysis": (
+            "Identify risk signals in the dataset. "
+            "Mention weak engagement, low lead quality, suspicious follower behavior if visible, or handles/posts needing caution."
+        ),
+        "Recommendations": (
+            "Provide action-oriented recommendations for outreach and prioritization. "
+            "Suggest who to contact first, who to nurture, and what operational focus would improve results."
+        ),
+        "Custom Question": (
+            "Answer the user’s custom question using the dataset context. "
+            "If the user asks about a specific Post ID or Handle, include the matching details clearly."
+        ),
+    }
+    section_instruction = section_prompts.get(section, section_prompts["Executive Summary"])
+    if custom_question.strip():
+        user_question = custom_question.strip()
+    elif section == "Custom Question":
+        user_question = "No custom question was entered."
+    elif post_id.strip() or handle.strip():
+        user_question = f"Please analyze {post_id or handle}"
+    else:
+        user_question = f"Provide {section.lower()} for the current data."
+
+    return section_instruction, user_question, context_text, post_matches, handle_matches
 
 # ══════════════════════════════════════════════════════════════════
 # LOGIN PAGE — user/admin buttons with hero header from file.py
@@ -1695,8 +1965,8 @@ st.markdown(
     unsafe_allow_html=True)
 
 # ── NAV ────────────────────────────────────────────────────────
-nav_pages = ["Executive Overview","Lead Intelligence","Post Analytics","Lead Scoring","About"]
-nav_icons = ["bar-chart-fill","people-fill","chat-dots-fill","robot","info-circle-fill"]
+nav_pages = ["Executive Overview","Lead Intelligence","Post Analytics","Lead Scoring","AI Insights","About"]
+nav_icons = ["bar-chart-fill","people-fill","chat-dots-fill","robot","stars","info-circle-fill"]
 
 page = option_menu(None,
     nav_pages,
@@ -2288,7 +2558,326 @@ elif page == "Lead Scoring":
 
 
 # ==========================================================
-# PAGE 5 — ABOUT
+# PAGE 5 — AI INSIGHTS
+# ==========================================================
+elif page == "AI Insights":
+    # ── init session state ─────────────────────────────────
+    for key in ["ai_chat_history","ai_exec_summary","ai_post_result",
+                "ai_content_result","ai_rec_result","ai_custom_result"]:
+        if key not in st.session_state:
+            st.session_state[key] = [] if key == "ai_chat_history" else ""
+
+    groq_ok = _groq_client() is not None
+
+    st.markdown(
+        f'<p style="color:#6b4fa0;font-size:15px;margin-bottom:0.4rem">'
+        f'Groq-powered AI Intelligence — chat, analyse, and generate insights from your data · '
+        f'<b style="color:{"#4ade80" if groq_ok else "#f87171"}">'
+        f'{"✅ Groq connected" if groq_ok else "⚠️ Groq not configured — add GROQ_API_KEY to .env or secrets.toml"}'
+        f'</b></p>', unsafe_allow_html=True)
+
+    scope_choice = st.radio("Data scope",["All data","Current dashboard filters"],
+                            index=0, horizontal=True)
+    ai_leads = leads_full if scope_choice == "All data" else leads
+    ai_posts = posts_full if scope_choice == "All data" else posts
+
+    (tab_chat, tab_exec, tab_post,
+     tab_content, tab_rec, tab_custom) = st.tabs([
+        "💬 AI Chat", "📊 Executive Summary", "🔍 Post ID Analyser",
+        "📝 Content Analyser", "🎯 Recommendations", "❓ Custom Question",
+    ])
+
+    # ── TAB 1 AI CHAT ─────────────────────────────────────
+    with tab_chat:
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        desc("<b>AI Dashboard Chat</b> — ask anything about your influencer data. "
+             "Mention a <b>Handle</b> or <b>Post ID</b> for drill-down detail. "
+             "Conversation history is kept for this session.")
+
+        if not st.session_state["ai_chat_history"]:
+            st.markdown(
+                '<div class="insight" style="--ac:#818cf8;text-align:center;padding:28px 20px;">'
+                '<div style="font-size:22px;margin-bottom:8px">💬</div>'
+                '<div style="font-size:13px;color:#9fb0d2">Start by asking a question below.<br>'
+                'Try: <i>"Which category has the best engagement rate?"</i></div></div>',
+                unsafe_allow_html=True)
+        for msg in st.session_state["ai_chat_history"]:
+            role    = msg["role"]
+            content = str(msg["content"])
+            if role == "user":
+                st.markdown(
+                    f'<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">'
+                    f'<div style="background:linear-gradient(135deg,#4f7cff22,#7c3aed22);'
+                    f'border:1px solid #4f7cff44;border-radius:14px 14px 4px 14px;'
+                    f'padding:10px 16px;max-width:75%;font-size:13px;color:#dbe7ff;">'
+                    f'{html.escape(content)}</div></div>', unsafe_allow_html=True)
+            else:
+                escaped = html.escape(content).replace("\n","<br>")
+                st.markdown(
+                    f'<div style="display:flex;justify-content:flex-start;margin-bottom:10px;">'
+                    f'<div style="background:linear-gradient(180deg,rgba(10,16,30,0.98),rgba(6,10,19,0.98));'
+                    f'border:1px solid #1a2740;border-left:3px solid #a855f7;'
+                    f'border-radius:14px 14px 14px 4px;padding:10px 16px;max-width:80%;'
+                    f'font-size:13px;color:#9fb0d2;line-height:1.7;">'
+                    f'<span style="font-size:10px;color:#a855f7;font-weight:700;text-transform:uppercase;'
+                    f'letter-spacing:.06em;display:block;margin-bottom:6px">✨ InstaScribe AI</span>'
+                    f'{escaped}</div></div>', unsafe_allow_html=True)
+
+        cc1,cc2,cc3 = st.columns([5,1,1], gap="small")
+        chat_input   = cc1.text_input("msg", label_visibility="collapsed",
+                                       placeholder="Ask about your data, a handle, or a post ID…",
+                                       key="ai_chat_input_field")
+        send_clicked  = cc2.button("Send ➤", use_container_width=True, key="ai_chat_send")
+        clear_clicked = cc3.button("🗑 Clear", use_container_width=True, key="ai_chat_clear")
+
+        if clear_clicked:
+            st.session_state["ai_chat_history"] = []; st.rerun()
+
+        if send_clicked and chat_input.strip():
+            user_msg = chat_input.strip()
+            st.session_state["ai_chat_history"].append({"role":"user","content":user_msg})
+            context_text, _, _ = _build_ai_context(user_msg, ai_leads, ai_posts)
+            history_for_groq   = st.session_state["ai_chat_history"][-8:]
+            sys_p = ("You are InstaScribe AI, an expert influencer intelligence assistant. "
+                     "Answer using ONLY the dataset context. Be concise and actionable. "
+                     "Use bullet points where helpful.")
+            messages = [{"role":"system","content":sys_p}]
+            for h in history_for_groq[:-1]:
+                messages.append({"role":h["role"],"content":h["content"]})
+            messages.append({"role":"user","content":f"{user_msg}\n\nDataset context:\n{context_text}"})
+            client = _groq_client()
+            if client is None:
+                answer = f"⚠️ Groq not configured.\n\nDataset context:\n{context_text}"
+            else:
+                try:
+                    completion = client.chat.completions.create(
+                        model=_groq_model_name(), temperature=0.35, max_tokens=1024, messages=messages)
+                    answer = completion.choices[0].message.content
+                except Exception as exc:
+                    answer = f"Error calling Groq: {exc}"
+            st.session_state["ai_chat_history"].append({"role":"assistant","content":answer})
+            st.rerun()
+
+        st.markdown('<div style="margin-top:10px;font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.07em">Quick prompts</div>', unsafe_allow_html=True)
+        qp_cols = st.columns(4, gap="small")
+        quick_prompts = [
+            "Which category has the best engagement rate?",
+            "Who are the top 5 high-priority leads?",
+            "What is the overall sentiment trend?",
+            "Which follower tier has the most leads?",
+        ]
+        for i, qp in enumerate(quick_prompts):
+            if qp_cols[i].button(qp, key=f"qp_{i}", use_container_width=True):
+                st.session_state["ai_chat_history"].append({"role":"user","content":qp})
+                ctx, _, _ = _build_ai_context(qp, ai_leads, ai_posts)
+                sys_p = "You are InstaScribe AI. Answer using only the dataset context. Be concise."
+                answer, err = _call_groq(sys_p, f"{qp}\n\nDataset context:\n{ctx}")
+                st.session_state["ai_chat_history"].append({"role":"assistant","content":err if err else answer})
+                st.rerun()
+
+    # ── TAB 2 EXECUTIVE SUMMARY ───────────────────────────
+    with tab_exec:
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        desc("<b>Executive Summary</b> — one-click AI briefing: lead quality, top categories, engagement health, and key actions.")
+        if st.button("📊 Generate Executive Summary", key="exec_gen_btn"):
+            ctx, _, _ = _build_ai_context("executive summary", ai_leads, ai_posts)
+            sys_p = ("You are InstaScribe AI. Write a structured executive summary. "
+                     "Include: 1) Overall health, 2) Top categories, 3) Lead pipeline, "
+                     "4) Sentiment overview, 5) Top 3 recommended actions. Use clear section headers.")
+            answer, err = _call_groq(sys_p, f"Generate executive summary.\n\nDataset:\n{ctx}")
+            st.session_state["ai_exec_summary"] = err if err else answer
+
+        if st.session_state["ai_exec_summary"]:
+            escaped = html.escape(str(st.session_state["ai_exec_summary"])).replace("\n","<br>")
+            st.markdown(
+                f'<div class="insight" style="--ac:#a855f7;padding:20px 22px;">'
+                f'<div style="font-size:11px;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">✨ AI Executive Summary</div>'
+                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
+                unsafe_allow_html=True)
+            st.markdown('<div style="margin-top:16px"></div>', unsafe_allow_html=True)
+            sec("📊 Live Snapshot")
+            s1,s2,s3,s4 = st.columns(4, gap="large")
+            hq_n  = int((ai_leads["Lead_Quality"]=="high").sum())  if "Lead_Quality"    in ai_leads.columns else 0
+            avg_e = float(ai_leads["Engagement_Rate"].mean())      if "Engagement_Rate" in ai_leads.columns else 0
+            avg_s = float(ai_leads["Avg_Sentiment"].mean())        if "Avg_Sentiment"   in ai_leads.columns else 0
+            avg_sc= float(ai_leads["Lead_Score"].mean())           if "Lead_Score"      in ai_leads.columns else 0
+            s1.markdown(kpi("High Priority Leads", fmt(hq_n),      "ready for outreach",       "#4ade80","#22c55e",70), unsafe_allow_html=True)
+            s2.markdown(kpi("Avg Engagement Rate", f"{avg_e:.2f}%","across all influencers",   "#818cf8","#6366f1",60), unsafe_allow_html=True)
+            s3.markdown(kpi("Avg Sentiment",f"{avg_s:.3f}",        "−1 negative · +1 positive","#c084fc","#a855f7",int((avg_s+1)/2*100)), unsafe_allow_html=True)
+            s4.markdown(kpi("Avg Lead Score",f"{avg_sc:.1f}",      "out of 100",               "#fbbf24","#f59e0b",int(avg_sc)), unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="insight" style="--ac:#818cf8;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">📊</div><div style="font-size:13px;color:#9fb0d2">Click <b style="color:#f4f7ff">Generate Executive Summary</b> to get an AI briefing.</div></div>', unsafe_allow_html=True)
+
+    # ── TAB 3 POST ID ANALYSER ────────────────────────────
+    with tab_post:
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        desc("<b>Post ID Analyser</b> — deep-dive any post: metrics, vs-handle-average, sentiment, and recommendation.")
+        post_id_val = st.text_input("Post ID", placeholder="e.g. POST_000001", key="ai_tab_post_id")
+        if post_id_val.strip() and "Post_ID" in ai_posts.columns:
+            hits = ai_posts[ai_posts["Post_ID"].astype(str).str.lower().str.contains(
+                post_id_val.strip().lower(), na=False)]["Post_ID"].head(5).tolist()
+            if hits:
+                st.markdown(f'<div style="font-size:11px;color:#6b4fa0;margin-top:-8px;margin-bottom:8px">Matches: {" · ".join(hits)}</div>', unsafe_allow_html=True)
+
+        if st.button("🔍 Analyse Post", key="ai_analyse_post_btn"):
+            if not post_id_val.strip():
+                st.warning("Please enter a Post ID first.")
+            else:
+                post_ctx = _profile_context_for_post(post_id_val.strip(), ai_posts)
+                sys_p = ("You are InstaScribe AI. Analyse this post deeply. Cover: "
+                         "1) Performance summary, 2) Comparison to handle average, "
+                         "3) Hashtag strategy, 4) Sentiment & audience reaction, "
+                         "5) One clear recommendation. Use exact numbers.")
+                answer, err = _call_groq(sys_p, f"Analyse this post:\n{post_ctx}")
+                st.session_state["ai_post_result"] = err if err else answer
+
+        if st.session_state["ai_post_result"]:
+            escaped = html.escape(str(st.session_state["ai_post_result"])).replace("\n","<br>")
+            st.markdown(
+                f'<div class="insight" style="--ac:#818cf8;padding:20px 22px;margin-top:12px;">'
+                f'<div style="font-size:11px;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🔍 Post Analysis — {html.escape(post_id_val.strip() or "")}</div>'
+                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
+                unsafe_allow_html=True)
+            if post_id_val.strip() and "Post_ID" in ai_posts.columns:
+                raw_row=ai_posts[ai_posts["Post_ID"].astype(str).str.strip().str.lower()==post_id_val.strip().lower()]
+                if len(raw_row)>0:
+                    with st.expander("Raw post record", expanded=False):
+                        show_cols=[c for c in ["Post_ID","Handle","Post_Date","Likes","Comments","Engagement","Sentiment_Score","Hashtags","Category_Name","Lead_Score"] if c in raw_row.columns]
+                        st.dataframe(raw_row[show_cols].reset_index(drop=True), use_container_width=True, hide_index=True)
+        else:
+            st.markdown('<div class="insight" style="--ac:#818cf8;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">🔍</div><div style="font-size:13px;color:#9fb0d2">Enter a <b style="color:#f4f7ff">Post ID</b> above and click Analyse Post.</div></div>', unsafe_allow_html=True)
+
+    # ── TAB 4 CONTENT ANALYSER ────────────────────────────
+    with tab_content:
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        desc("<b>Post Content Analyser</b> — pick a Handle to analyse all their posts. "
+             "AI identifies patterns, hashtag combos, engagement trend, and strategy gaps.")
+        handle_opts = [""] + sorted(ai_leads["Handle"].dropna().astype(str).unique().tolist()) \
+                      if "Handle" in ai_leads.columns else [""]
+        content_handle = st.selectbox("Select Handle", handle_opts, key="ai_content_handle_sel",
+                                       format_func=lambda x: "— choose a handle —" if x=="" else x)
+        if st.button("📝 Analyse Content Strategy", key="ai_content_analyse_btn"):
+            if not content_handle:
+                st.warning("Please select a handle first.")
+            else:
+                hctx = _profile_context_for_handle(content_handle, ai_leads, ai_posts)
+                sys_p = ("You are InstaScribe AI, a content strategy expert. Analyse this creator. "
+                         "Cover: 1) Performance overview, 2) Top hashtag patterns, "
+                         "3) Engagement trend, 4) Likes vs comments ratio, "
+                         "5) Three specific content recommendations. Use exact numbers.")
+                answer, err = _call_groq(sys_p, f"Analyse content strategy for:\n{hctx}")
+                st.session_state["ai_content_result"] = err if err else answer
+
+        if st.session_state["ai_content_result"]:
+            if content_handle and "Handle" in ai_leads.columns:
+                h_mask = ai_leads["Handle"].astype(str).str.strip().str.lower() == content_handle.strip().lower()
+                if h_mask.any():
+                    h_row=ai_leads[h_mask].iloc[0]; sent_t,sent_c=sentiment_code(h_row.get("Avg_Sentiment",0))
+                    hp1,hp2,hp3,hp4=st.columns(4,gap="large")
+                    hp1.markdown(kpi("Followers",      fmt(safe_int(h_row.get("Follower_Count",0))),    content_handle,    "#a855f7","#ec4899",65), unsafe_allow_html=True)
+                    hp2.markdown(kpi("Engagement Rate",f"{safe_float(h_row.get('Engagement_Rate')):.2f}%","",               "#818cf8","#6366f1",60), unsafe_allow_html=True)
+                    hp3.markdown(kpi("Lead Score",     f"{safe_float(h_row.get('Lead_Score')):.1f}",    "/100",             "#c084fc","#a855f7",int(safe_float(h_row.get('Lead_Score')))), unsafe_allow_html=True)
+                    hp4.markdown(kpi("Sentiment",      sent_t,                                         "",                 sent_c,sent_c,70), unsafe_allow_html=True)
+                    st.markdown('<div style="margin-top:12px"></div>', unsafe_allow_html=True)
+            escaped = html.escape(str(st.session_state["ai_content_result"])).replace("\n","<br>")
+            st.markdown(
+                f'<div class="insight" style="--ac:#4ade80;padding:20px 22px;">'
+                f'<div style="font-size:11px;font-weight:700;color:#4ade80;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">📝 Content Strategy — {html.escape(content_handle or "")}</div>'
+                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
+                unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="insight" style="--ac:#4ade80;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">📝</div><div style="font-size:13px;color:#9fb0d2">Select a <b style="color:#f4f7ff">Handle</b> and click Analyse Content Strategy.</div></div>', unsafe_allow_html=True)
+
+    # ── TAB 5 RECOMMENDATIONS ─────────────────────────────
+    with tab_rec:
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        desc("<b>AI Recommendations</b> — action-oriented outreach and campaign strategy based on your live lead pipeline.")
+        rec_focus = st.selectbox("Recommendation focus",
+            ["Full Outreach Strategy","Top Handles to Contact Now",
+             "Nurture Pipeline","Category Priority","Risk & Watch List"],
+            key="ai_rec_focus")
+        if st.button("🎯 Generate Recommendations", key="ai_rec_gen_btn"):
+            ctx, _, _ = _build_ai_context(rec_focus, ai_leads, ai_posts)
+            focus_prompts = {
+                "Full Outreach Strategy":      "Provide complete outreach strategy: top 5 to contact now, top 5 to nurture, category priorities, timing recommendations.",
+                "Top Handles to Contact Now":  "List top 10 handles to contact immediately. For each: reason, outreach angle, risks.",
+                "Nurture Pipeline":            "Analyse medium-quality leads. Which are closest to high-priority? What signals should trigger outreach?",
+                "Category Priority":           "Rank all categories by outreach priority with ER, lead quality split, score, and campaign recommendation.",
+                "Risk & Watch List":           "Identify influencers with risk signals: declining engagement, negative sentiment, mass-following, score vs follower mismatch.",
+            }
+            sys_p = ("You are InstaScribe AI, an expert influencer marketing strategist. "
+                     "Provide specific, actionable recommendations using exact numbers from context.")
+            answer, err = _call_groq(sys_p, f"{focus_prompts.get(rec_focus,'')}\n\nDataset:\n{ctx}")
+            st.session_state["ai_rec_result"] = err if err else answer
+
+        if st.session_state["ai_rec_result"]:
+            escaped = html.escape(str(st.session_state["ai_rec_result"])).replace("\n","<br>")
+            st.markdown(
+                f'<div class="insight" style="--ac:#fbbf24;padding:20px 22px;">'
+                f'<div style="font-size:11px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🎯 {html.escape(rec_focus)}</div>'
+                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
+                unsafe_allow_html=True)
+            st.download_button("⬇️ Export as TXT",
+                data=str(st.session_state["ai_rec_result"]).encode(),
+                file_name=f"recommendation_{rec_focus.lower().replace(' ','_')}.txt",
+                mime="text/plain", key="ai_rec_export")
+        else:
+            st.markdown('<div class="insight" style="--ac:#fbbf24;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">🎯</div><div style="font-size:13px;color:#9fb0d2">Choose a focus and click <b style="color:#f4f7ff">Generate Recommendations</b>.</div></div>', unsafe_allow_html=True)
+
+    # ── TAB 6 CUSTOM QUESTION ─────────────────────────────
+    with tab_custom:
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        desc("<b>Custom Question</b> — ask anything specific. Mention a Handle or Post ID for entity-level detail.")
+        custom_q = st.text_area("Your question",
+            placeholder=("Examples:\n"
+                          "• What is the engagement rate of @handlename?\n"
+                          "• Compare Tech and Fashion categories\n"
+                          "• Generate an outreach email for the top fitness influencer"),
+            height=130, key="ai_custom_q_input")
+        if st.button("✨ Ask AI", key="ai_custom_ask_btn"):
+            if not custom_q.strip():
+                st.warning("Please enter a question first.")
+            else:
+                ctx, p_matches, h_matches = _build_ai_context(custom_q.strip(), ai_leads, ai_posts)
+                sys_p = ("You are InstaScribe AI. Answer using ONLY the dataset context. "
+                         "If the question mentions a Handle or Post ID, include their specific metrics. "
+                         "If the answer isn't in the data, say so clearly.")
+                answer, err = _call_groq(sys_p, f"Question: {custom_q}\n\nDataset context:\n{ctx}")
+                st.session_state["ai_custom_result"] = err if err else answer
+                st.session_state["ai_custom_matches"] = {"posts":p_matches,"handles":h_matches}
+
+        if st.session_state["ai_custom_result"]:
+            escaped = html.escape(str(st.session_state["ai_custom_result"])).replace("\n","<br>")
+            st.markdown(
+                f'<div class="insight" style="--ac:#ec4899;padding:20px 22px;margin-top:12px;">'
+                f'<div style="font-size:11px;font-weight:700;color:#ec4899;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">✨ AI Answer</div>'
+                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
+                unsafe_allow_html=True)
+            matches = st.session_state.get("ai_custom_matches",{})
+            if matches.get("posts") or matches.get("handles"):
+                with st.expander("Dataset records used", expanded=False):
+                    if matches.get("posts"):    st.markdown(f"**Post IDs:** {', '.join(matches['posts'])}")
+                    if matches.get("handles"):  st.markdown(f"**Handles:** {', '.join(matches['handles'])}")
+        else:
+            st.markdown('<div class="insight" style="--ac:#ec4899;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">❓</div><div style="font-size:13px;color:#9fb0d2">Type your question and click <b style="color:#f4f7ff">Ask AI</b>.</div></div>', unsafe_allow_html=True)
+
+        sec("💡 Suggested Questions")
+        sg1,sg2,sg3=st.columns(3)
+        suggestions=[
+            ("Which influencer has the highest engagement rate?","#818cf8"),
+            ("Compare Tech vs Fashion lead quality","#4ade80"),
+            ("Generate an outreach email for the top lead","#fbbf24"),
+            ("What are the riskiest influencers?","#f87171"),
+            ("Which handles have declining engagement?","#c084fc"),
+            ("What hashtag strategy works best for Fitness?","#ec4899"),
+        ]
+        sg_cols=[sg1,sg2,sg3,sg1,sg2,sg3]
+        for i,(sug,col) in enumerate(suggestions):
+            sg_cols[i].markdown(f'<div class="insight" style="--ac:{col};font-size:12px;">{html.escape(sug)}</div>', unsafe_allow_html=True)
+
+
+# ==========================================================
+# PAGE 6 — ABOUT
 # ==========================================================
 elif page == "About":
     total_inf   = len(leads_full)
@@ -2350,6 +2939,7 @@ elif page == "About":
           <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div><span><b style="color:#e8d5ff">Lead Intelligence</b> — Followers vs ER scatter, Avg Accounts Following bars, tier stack, ER chart, ranked table</span></div>
           <div class="about-li"><div class="about-li-dot" style="--dot:#c084fc"></div><span><b style="color:#e8d5ff">Post Analytics</b> — Post Inspector (search by ID or Handle) + monthly engagement, quadrant scatter, heatmap, hashtag cloud</span></div>
           <div class="about-li"><div class="about-li-dot" style="--dot:#f87171"></div><span><b style="color:#e8d5ff">Lead Scoring</b> — Pipeline funnel, score histogram with KDE, violin chart, priority outreach export</span></div>
+                    <div class="about-li"><div class="about-li-dot" style="--dot:#fbbf24"></div><span><b style="color:#e8d5ff">AI Insights</b> — Groq-powered Q&A for whole-system insights plus Post ID and Handle lookups</span></div>
         </div>
         """, unsafe_allow_html=True)
 

@@ -8,6 +8,7 @@ InstaScribe is a Streamlit dashboard for influencer intelligence, lead scoring, 
 - Lead intelligence views for followers, engagement rate, authenticity, and ranked influencer profiles
 - Post analytics with monthly engagement, likes vs comments charts, heatmaps, hashtag cloud, and post inspection
 - AI lead scoring with pipeline funnel, score distribution, category comparison, and exportable outreach lists
+- AI Insights with Groq-powered Q&A for whole-system summaries plus Post ID and Handle lookups
 - Sidebar filters for category, quality, engagement rate, followers, follower tier, date range, and year
 - Login, sign up, forgot password, and admin user-management flows
 
@@ -36,6 +37,7 @@ Install the Python dependencies listed in `requirements.txt`:
 - wordcloud
 - streamlit-authenticator
 - PyYAML
+- groq
 
 ## Run the App
 

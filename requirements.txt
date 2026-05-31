@@ -9,3 +9,4 @@ wordcloud
 streamlit-option-menu
 streamlit-authenticator
 PyYAML
+groq
