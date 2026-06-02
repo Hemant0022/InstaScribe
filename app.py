@@ -1474,10 +1474,11 @@ div[data-testid="stButton"]{
     cursor:pointer !important;
     box-shadow:0 10px 20px rgba(0,0,0,0.20) !important;
 }
-[data-testid="stRadio"] input:checked + label{
+[data-testid="stRadio"] input:checked + label,
+[data-testid="stRadio"] [aria-checked="true"] ~ label {
     background:linear-gradient(135deg,#ff4ad7 0%,#6adfff 100%) !important;
     border-color:rgba(255,255,255,0.45) !important;
-    color:#000 !important;
+    color:#000000 !important;
 }
 [data-testid="stTextInput"]{margin-bottom:10px;width:100% !important;}
 [data-testid="stTextInput"] label{color:#8ea0c7 !important;font-size:11px !important;letter-spacing:.09em !important;font-weight:700 !important;padding-left:4px !important;margin-bottom:4px !important;text-transform:uppercase !important;}
@@ -1629,9 +1630,36 @@ div[data-testid="stButton"] > button:hover,
     letter-spacing: 0.08em !important;
     text-transform: uppercase !important;
 }
-[data-testid="stRadio"] label{background:rgba(255,255,255,0.86) !important;border:1px solid #dbe6f5 !important;color:#3f5478 !important;}
-[data-testid="stRadio"] input:checked + label{background:linear-gradient(135deg,#4f7cff,#ff4dad) !important;color:#ffffff !important;border-color:transparent !important;}
-[data-testid="stCheckbox"] label{color:#5f6f8d !important;}
+[data-testid="stRadio"] label {
+    background: rgba(255,255,255,0.86) !important;
+    border: 1px solid #dbe6f5 !important;
+    color: #3f5478 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    padding: 8px 20px !important;
+    border-radius: 999px !important;
+}
+[data-testid="stRadio"] input:checked + label,
+[data-testid="stRadio"] [aria-checked="true"] ~ label {
+    background: linear-gradient(135deg,#4f7cff,#ff4dad) !important;
+    color: #ffffff !important;
+    border-color: transparent !important;
+}
+
+/* Dark theme override — forces white text on unselected pills */
+@media (prefers-color-scheme: dark) {
+    [data-testid="stRadio"] label {
+        background: rgba(11,18,34,0.42) !important;
+        border: 1px solid rgba(255,255,255,0.18) !important;
+        color: #ffffff !important;
+    }
+    [data-testid="stRadio"] input:checked + label,
+    [data-testid="stRadio"] [aria-checked="true"] ~ label {
+        background: linear-gradient(135deg,#ff4ad7 0%,#6adfff 100%) !important;
+        color: #000000 !important;
+        border-color: rgba(255,255,255,0.45) !important;
+    }
+}
 .stCheckbox svg{fill:#ff4dad !important;}
 </style>
 """,
