@@ -1,7 +1,6 @@
 import json
 import html
 import os, sys
-import sqlite3
 import re
 from datetime import datetime, timezone
 from datetime import timedelta
@@ -21,6 +20,15 @@ import seaborn as sns
 from scipy.stats import gaussian_kde
 from wordcloud import WordCloud
 from streamlit_option_menu import option_menu
+from supabase import create_client, Client
+from auth_supabase import (
+    signup,
+    login,
+    logout,
+    reset_password,
+    get_profile,
+    supabase
+)
 
 # ── load .env for local development ───────────────────────────
 try:
@@ -39,8 +47,73 @@ except Exception:
 st.set_page_config(page_title="InstaScribe", page_icon="📱",
                    layout="wide", initial_sidebar_state="expanded")
 
-AUTH_DB_PATH = Path(__file__).with_name("auth_store.db")
 AUTH_STORE_PATH = Path(__file__).with_name("auth_store.yaml")
+
+
+# ══════════════════════════════════════════════════════════════════
+# SUPABASE CONNECTION
+# ══════════════════════════════════════════════════════════════════
+
+@st.cache_resource
+def _supabase_client() -> Client:
+    """
+    Reads SUPABASE_URL and SUPABASE_KEY from Streamlit secrets.
+    Add these to your .streamlit/secrets.toml:
+
+        [supabase]
+        url = "https://xxxxxxxxxxxxxxxxxxxx.supabase.co"
+        key = "your-anon-or-service-role-key"
+    """
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+
+def _sb() -> Client:
+    return _supabase_client()
+
+
+# ── helpers ──────────────────────────────────────────────────────
+
+def _details_from_text(details_text):
+    if not details_text:
+        return {}
+    if isinstance(details_text, dict):
+        return details_text
+    try:
+        loaded = json.loads(details_text)
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        return {}
+
+
+def _details_to_text(details):
+    return json.dumps(_details_from_text(details), ensure_ascii=False)
+
+
+# ══════════════════════════════════════════════════════════════════
+# SUPABASE SCHEMA BOOTSTRAP
+# Run this SQL once in the Supabase SQL editor to create tables:
+#
+#   CREATE TABLE IF NOT EXISTS users (
+#       username TEXT PRIMARY KEY,
+#       name TEXT NOT NULL,
+#       email TEXT NOT NULL UNIQUE,
+#       password TEXT NOT NULL,
+#       role TEXT NOT NULL DEFAULT 'member',
+#       created_at TIMESTAMPTZ,
+#       details JSONB NOT NULL DEFAULT '{}'
+#   );
+#
+#   CREATE TABLE IF NOT EXISTS active_sessions (
+#       session_id TEXT PRIMARY KEY,
+#       username TEXT NOT NULL,
+#       name TEXT,
+#       role TEXT,
+#       started_at TIMESTAMPTZ NOT NULL,
+#       last_seen TIMESTAMPTZ NOT NULL
+#   );
+# ══════════════════════════════════════════════════════════════════
 
 
 def _default_auth_store():
@@ -99,51 +172,28 @@ def _load_yaml_auth_store():
     return {}
 
 
-def _sqlite_connection():
-    connection = sqlite3.connect(AUTH_DB_PATH)
-    connection.row_factory = sqlite3.Row
-    return connection
+# ══════════════════════════════════════════════════════════════════
+# USER CRUD — Supabase
+# ══════════════════════════════════════════════════════════════════
+
+def _read_users_from_db():
+    res = _sb().table("users").select("*").order("username").execute()
+    users = {}
+    for row in (res.data or []):
+        users[row["username"]] = {
+            "name": row["name"],
+            "email": row["email"],
+            "password": row["password"],
+            "role": row["role"],
+            "created_at": row.get("created_at") or "",
+            "details": _details_from_text(row.get("details") or {}),
+        }
+    return users
 
 
-def _details_from_text(details_text):
-    if not details_text:
-        return {}
-    if isinstance(details_text, dict):
-        return details_text
-    try:
-        loaded = json.loads(details_text)
-        return loaded if isinstance(loaded, dict) else {}
-    except Exception:
-        return {}
-
-
-def _details_to_text(details):
-    return json.dumps(_details_from_text(details), ensure_ascii=False)
-
-
-def _ensure_auth_db():
-    with _sqlite_connection() as connection:
-        connection.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                username TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                role TEXT NOT NULL,
-                created_at TEXT,
-                details TEXT NOT NULL DEFAULT '{}'
-            )
-        """)
-        connection.execute("""
-            CREATE TABLE IF NOT EXISTS active_sessions (
-                session_id TEXT PRIMARY KEY,
-                username TEXT NOT NULL,
-                name TEXT,
-                role TEXT,
-                started_at TEXT NOT NULL,
-                last_seen TEXT NOT NULL
-            )
-        """)
+def _user_count_in_db():
+    res = _sb().table("users").select("username", count="exact").execute()
+    return res.count or 0
 
 
 def _seed_auth_db(yaml_data):
@@ -151,51 +201,16 @@ def _seed_auth_db(yaml_data):
     defaults = _default_auth_store()["credentials"]["usernames"]
     if not seed_users:
         seed_users = defaults
-    with _sqlite_connection() as connection:
-        for username_value, record in seed_users.items():
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO users (username, name, email, password, role, created_at, details)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    username_value,
-                    record.get("name", username_value),
-                    record.get("email", ""),
-                    record.get("password", ""),
-                    record.get("role", "member"),
-                    record.get("created_at", ""),
-                    _details_to_text(record.get("details", {})),
-                ),
-            )
-
-
-def _read_users_from_db():
-    with _sqlite_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT username, name, email, password, role, created_at, details
-            FROM users
-            ORDER BY username
-            """
-        ).fetchall()
-    users = {}
-    for row in rows:
-        users[row["username"]] = {
-            "name": row["name"],
-            "email": row["email"],
-            "password": row["password"],
-            "role": row["role"],
-            "created_at": row["created_at"] or "",
-            "details": _details_from_text(row["details"]),
-        }
-    return users
-
-
-def _user_count_in_db():
-    with _sqlite_connection() as connection:
-        row = connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()
-    return int(row["count"] if row else 0)
+    for username_value, record in seed_users.items():
+        _sb().table("users").upsert({
+            "username":   username_value,
+            "name":       record.get("name", username_value),
+            "email":      record.get("email", ""),
+            "password":   record.get("password", ""),
+            "role":       record.get("role", "member"),
+            "created_at": record.get("created_at", ""),
+            "details":    _details_from_text(record.get("details", {})),
+        }, on_conflict="username", ignore_duplicates=True).execute()
 
 
 def _save_auth_store(data):
@@ -208,7 +223,6 @@ def _load_auth_store():
     defaults = _default_auth_store()
     yaml_data.setdefault("cookie", _cookie_config(defaults["cookie"]))
     yaml_data.setdefault("preauthorized", defaults["preauthorized"])
-    _ensure_auth_db()
     if _user_count_in_db() == 0:
         _seed_auth_db(yaml_data)
     data = {
@@ -226,6 +240,60 @@ def _refresh_auth_store_cache():
     return auth_store
 
 
+def _save_user_record(username_value, record):
+    _sb().table("users").upsert({
+        "username":   username_value,
+        "name":       record.get("name", username_value),
+        "email":      record.get("email", ""),
+        "password":   record.get("password", ""),
+        "role":       record.get("role", "member"),
+        "created_at": record.get("created_at", ""),
+        "details":    _details_from_text(record.get("details", {})),
+    }, on_conflict="username").execute()
+    _refresh_auth_store_cache()
+
+
+def _set_password(username_value, new_password):
+    _sb().table("users").update(
+        {"password": _hash_password(new_password)}
+    ).eq("username", username_value).execute()
+    _refresh_auth_store_cache()
+
+
+def _delete_user_record(username_value):
+    _sb().table("users").delete().eq("username", username_value).execute()
+    _refresh_auth_store_cache()
+
+
+def _find_user_by_identifier(identifier):
+    lookup = (identifier or "").strip().lower()
+    if not lookup:
+        return None, None
+    res = (
+        _sb().table("users")
+        .select("*")
+        .or_(f"username.ilike.{lookup},email.ilike.{lookup}")
+        .limit(1)
+        .execute()
+    )
+    rows = res.data or []
+    if rows:
+        row = rows[0]
+        return row["username"], {
+            "name":       row["name"],
+            "email":      row["email"],
+            "password":   row["password"],
+            "role":       row["role"],
+            "created_at": row.get("created_at") or "",
+            "details":    _details_from_text(row.get("details") or {}),
+        }
+    return None, None
+
+
+# ══════════════════════════════════════════════════════════════════
+# SESSION TRACKING — Supabase
+# ══════════════════════════════════════════════════════════════════
+
 def _ensure_session_id():
     if "session_uuid" not in st.session_state:
         st.session_state["session_uuid"] = uuid.uuid4().hex
@@ -233,57 +301,52 @@ def _ensure_session_id():
 
 
 def _touch_active_session(username_value, name_value=None, role_value=None):
+    if not username_value:
+        return
     session_id = _ensure_session_id()
     now = datetime.now(timezone.utc).isoformat()
-    with _sqlite_connection() as connection:
-        existing = connection.execute(
-            "SELECT started_at FROM active_sessions WHERE session_id = ?",
-            (session_id,),
-        ).fetchone()
-        started_at = existing[0] if existing else now
-        connection.execute(
-            """
-            INSERT INTO active_sessions (session_id, username, name, role, started_at, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(session_id) DO UPDATE SET
-                username=excluded.username,
-                name=excluded.name,
-                role=excluded.role,
-                last_seen=excluded.last_seen
-            """,
-            (session_id, username_value, name_value or "", role_value or "", started_at, now),
-        )
+    # Check if session already exists to preserve started_at
+    res = _sb().table("active_sessions").select("started_at").eq("session_id", session_id).execute()
+    existing = res.data or []
+    started_at = existing[0]["started_at"] if existing else now
+    _sb().table("active_sessions").upsert({
+        "session_id": session_id,
+        "username":   username_value,
+        "name":       name_value or "",
+        "role":       role_value or "",
+        "started_at": started_at,
+        "last_seen":  now,
+    }, on_conflict="session_id").execute()
 
 
 def _clear_active_session(_=None):
     session_id = st.session_state.get("session_uuid")
     if not session_id:
         return
-    with _sqlite_connection() as connection:
-        connection.execute("DELETE FROM active_sessions WHERE session_id = ?", (session_id,))
+    _sb().table("active_sessions").delete().eq("session_id", session_id).execute()
 
 
 def _prune_active_sessions(max_age_minutes=10):
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)).isoformat()
-    with _sqlite_connection() as connection:
-        connection.execute("DELETE FROM active_sessions WHERE last_seen < ?", (cutoff,))
+    _sb().table("active_sessions").delete().lt("last_seen", cutoff).execute()
 
 
 def _get_active_sessions(max_age_minutes=10):
     _prune_active_sessions(max_age_minutes=max_age_minutes)
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)).isoformat()
-    with _sqlite_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT session_id, username, name, role, started_at, last_seen
-            FROM active_sessions
-            WHERE last_seen >= ?
-            ORDER BY last_seen DESC
-            """,
-            (cutoff,),
-        ).fetchall()
-    return rows
+    res = (
+        _sb().table("active_sessions")
+        .select("*")
+        .gte("last_seen", cutoff)
+        .order("last_seen", desc=True)
+        .execute()
+    )
+    return res.data or []
 
+
+# ══════════════════════════════════════════════════════════════════
+# AUTH HELPERS
+# ══════════════════════════════════════════════════════════════════
 
 def _refresh_admin_view(tab_name=None):
     if tab_name:
@@ -312,74 +375,6 @@ def _is_strong_password(password):
     )
 
 
-def _find_user_by_identifier(identifier):
-    lookup = (identifier or "").strip().lower()
-    if not lookup:
-        return None, None
-    with _sqlite_connection() as connection:
-        row = connection.execute(
-            """
-            SELECT username, name, email, password, role, created_at, details
-            FROM users
-            WHERE lower(username) = ? OR lower(email) = ?
-            LIMIT 1
-            """,
-            (lookup, lookup),
-        ).fetchone()
-    if row:
-        return row["username"], {
-            "name": row["name"],
-            "email": row["email"],
-            "password": row["password"],
-            "role": row["role"],
-            "created_at": row["created_at"] or "",
-            "details": _details_from_text(row["details"]),
-        }
-    return None, None
-
-
-def _save_user_record(username_value, record):
-    with _sqlite_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO users (username, name, email, password, role, created_at, details)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(username) DO UPDATE SET
-                name=excluded.name,
-                email=excluded.email,
-                password=excluded.password,
-                role=excluded.role,
-                created_at=excluded.created_at,
-                details=excluded.details
-            """,
-            (
-                username_value,
-                record.get("name", username_value),
-                record.get("email", ""),
-                record.get("password", ""),
-                record.get("role", "member"),
-                record.get("created_at", ""),
-                _details_to_text(record.get("details", {})),
-            ),
-        )
-    _refresh_auth_store_cache()
-
-
-def _set_password(username_value, new_password):
-    with _sqlite_connection() as connection:
-        connection.execute(
-            "UPDATE users SET password = ? WHERE username = ?",
-            (_hash_password(new_password), username_value),
-        )
-    _refresh_auth_store_cache()
-
-
-def _delete_user_record(username_value):
-    with _sqlite_connection() as connection:
-        connection.execute("DELETE FROM users WHERE username = ?", (username_value,))
-    _refresh_auth_store_cache()
-
-
 def _set_page_mode(page_mode):
     st.session_state["page_mode"] = page_mode
     try:
@@ -405,6 +400,7 @@ def _set_admin_flash(message, kind="success"):
     st.session_state["admin_flash"] = {"kind": kind, "message": message}
 
 
+# ── Bootstrap ─────────────────────────────────────────────────────
 try:
     auth_store = _load_auth_store()
 except Exception as auth_init_error:
@@ -462,7 +458,6 @@ html, body, [class*="css"] {
 
 /* ── LOGIN PAGE ──────────────────────────────────────────────── */
 .login-outer {
-    /* make login appear higher on the page (adjusted further up) */
     min-height: 48vh;
     display: flex;
     align-items: flex-start;
@@ -521,22 +516,19 @@ html, body, [class*="css"] {
     font-size: 12px; color: #6b4fa0; margin-bottom: 24px;
 }
 .login-card-wrapper {
-    background: linear-gradient(180deg, rgba(10,16,30,0.98), rgba(6,10,19,0.98));
-    border: 1px solid #1a2740;
-    border-radius: 24px;
-    overflow: hidden;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
     position: relative;
     max-width: 820px;
     margin: 0 auto;
+    box-shadow: none !important;
 }
 .login-card-wrapper::before {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(79,124,255,0.7), rgba(124,58,237,0.7), transparent);
-    z-index: 2;
+    display: none !important;
 }
 
-/* Input overrides */
 [data-testid="stTextInput"] input {
     background: rgba(15,22,40,0.95) !important;
     border: 1px solid #1a2740 !important;
@@ -555,31 +547,41 @@ html, body, [class*="css"] {
     letter-spacing: .07em;
 }
 
-/* Button overrides */
-.stButton > button {
-    background: linear-gradient(135deg,#4f7cff,#7c3aed) !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-size: 14px !important;
-    font-weight: 600 !important;
-    padding: 10px 20px !important;
+.stButton > button, .btn-secondary > button {
+    height: 50px !important;
+}
+
+/* Force full width on the button container */
+[data-testid="stButton"] {
     width: 100% !important;
-    letter-spacing: .03em;
+    max-width: 480px !important;
+}
+[data-testid="stButton"] > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: block !important;
+}
+[data-testid="stFormSubmitButton"] {
+    width: 100% !important;
+}
+[data-testid="stFormSubmitButton"] > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: block !important;
+}
+div[data-testid="stForm"] [data-testid="stButton"],
+div[data-testid="stForm"] [data-testid="stButton"] > button,
+div[data-testid="stForm"] [data-testid="stFormSubmitButton"],
+div[data-testid="stForm"] [data-testid="stFormSubmitButton"] > button {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
 }
 .stButton > button:hover { opacity: .88 !important; }
-
-/* Back button secondary style */
-.btn-secondary > button {
-    background: rgba(15,22,40,0.95) !important;
-    border: 1px solid #1a2740 !important;
-    color: #9fb0d2 !important;
-}
 
 [data-testid="stCheckbox"] label { color: #8ea0c7 !important; font-size: 13px !important; }
 [data-testid="stRadio"] label { color: #9fb0d2 !important; }
 
-/* ── SIDEBAR ───────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #050814 0%, #090d1a 100%);
     border-right: 1px solid #18233a;
@@ -589,7 +591,7 @@ section[data-testid="stSidebar"] label {
   font-size: 0.7rem !important;
   text-transform: uppercase;
   letter-spacing: .08em;
-  color: #8ea0c7 !important;
+  color: #111111 !important;
 }
 [data-testid="stSidebar"] .stSlider > div > div > div { background: #18233a !important; }
 [data-testid="stSidebar"] .stSlider > div > div > div > div { background: linear-gradient(90deg,#4f7cff,#7c3aed) !important; }
@@ -597,7 +599,6 @@ section[data-testid="stSidebar"] label {
 [data-testid="stSidebar"] [data-baseweb="tag"] * { color: #eef3ff !important; }
 [role="listbox"] [role="option"] * { color: #eef3ff !important; }
 
-/* ── HEADER CARD ───────────────────────────────────────────── */
 .app-header { margin-top: 0.95rem; margin-bottom: 1rem; }
 .app-header-card {
     background: linear-gradient(180deg, rgba(10,16,30,0.98), rgba(6,10,19,0.98));
@@ -622,7 +623,6 @@ section[data-testid="stSidebar"] label {
 .app-title { font-size: 1.2rem; font-weight: 700; color: #f4f7ff; vertical-align: middle; }
 .app-subtitle { font-size: 10px; color: #8ea0c7; text-transform: uppercase; letter-spacing: .12em; margin-top: 2px; }
 
-/* ── KPI CARDS ─────────────────────────────────────────────── */
 .kpi {
     background: linear-gradient(180deg, rgba(10,16,30,0.98), rgba(6,10,19,0.98));
     border: 1px solid #1a2740;
@@ -650,7 +650,6 @@ section[data-testid="stSidebar"] label {
 .kpi-sub { font-size: 11px; color: #8ea0c7; margin-top: 7px; }
 .kpi-bar { height: 3px; border-radius: 2px; margin-top: 12px; background: linear-gradient(90deg, var(--ac,#4f7cff), var(--ac2,#7c3aed)); width: var(--bar, 70%); }
 
-/* ── SECTION HEADERS ───────────────────────────────────────── */
 .sec {
     font-size: 10px; font-weight: 700; color: #8ea0c7;
     text-transform: uppercase; letter-spacing: .8px;
@@ -665,7 +664,6 @@ section[data-testid="stSidebar"] label {
   background: linear-gradient(90deg,#4f7cff,#7c3aed);
 }
 
-/* ── INSIGHT CARDS ─────────────────────────────────────────── */
 .insight {
     background: linear-gradient(180deg, rgba(10,16,30,0.94), rgba(6,10,19,0.98));
     backdrop-filter: blur(8px);
@@ -723,6 +721,270 @@ section[data-testid="stSidebar"] label {
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown(
+    """
+<style>
+.stApp {
+    background:
+        radial-gradient(circle at 10% 10%, rgba(255,77,171,0.10), transparent 22%),
+        radial-gradient(circle at 90% 12%, rgba(79,124,255,0.10), transparent 24%),
+        radial-gradient(circle at 72% 88%, rgba(255,206,90,0.10), transparent 20%),
+        linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%) !important;
+}
+
+.block-container { color: #162945 !important; }
+
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%) !important;
+    border-right: 1px solid #dbe6f5 !important;
+}
+
+[data-testid="stSidebar"] * { color: #000000 !important; }
+
+.app-header-card,
+.kpi,
+.insight,
+.post-banner,
+.desc-box,
+.about-hero,
+.about-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(244,248,255,0.99)) !important;
+    border-color: #dbe6f5 !important;
+    box-shadow: 0 18px 40px rgba(20, 42, 84, 0.08) !important;
+}
+
+.app-header-card::before,
+.kpi::before,
+.sec::after,
+.post-banner::before,
+.about-hero::before {
+    background: linear-gradient(90deg, transparent, #4f7cff, #ff4dad, #ffce5a, transparent) !important;
+}
+
+.app-title,
+.about-title,
+.post-banner-handle,
+.login-form-title,
+.card-title,
+.sec,
+.hero-brand {
+    color: #14213d !important;
+}
+
+    .app-subtitle,
+    .kpi-label,
+    .kpi-sub,
+    .post-banner-id,
+    .post-banner-meta,
+    .about-li,
+    .desc-box,
+    .insight,
+    .pb-row,
+    .auth-note,
+    .login-tagline,
+    .card-subtitle,
+    .hero-copy,
+    .login-form-sub {
+    color: #231a3b !important;
+    font-weight: 700 !important;
+}
+
+.kpi {
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,248,255,0.98)) !important;
+    border-color: #dbe6f5 !important;
+    color: #231a3b !important;
+    font-weight: 700 !important;
+}
+
+.app-header-card, .insight, .insight *, .post-banner, .post-banner *, .chip, .about-li, .about-li * {
+    color: #231a3b !important;
+    font-weight: 700 !important;
+}
+.insight b, .about-title, .kpi-label { color: #231a3b !important; }
+
+.insight .category { color: #4f7cff !important; font-weight: 800 !important; }
+
+.post-banner-meta, .post-banner-id, .pb-row, .card-subtitle, .login-tagline, .kpi-sub {
+    color: #6b4fa0 !important;
+    font-weight: 600 !important;
+}
+.desc-box, .about-li, .insight { color: #4f7cff !important; font-weight: 600 !important; }
+.insight .category, .chip { color: #ec4899 !important; }
+.kpi-sub, .post-banner-meta small, .hero-copy { color: #fbbf24 !important; font-weight: 600 !important; }
+
+*[style*="color:#9fb0d2"] { color: #4f7cff !important; font-weight: 700 !important; }
+*[style*="color:#c4d0e8"] { color: #6b4fa0 !important; font-weight: 700 !important; }
+*[style*="color:#f4f7ff"] { color: #231a3b !important; font-weight: 700 !important; }
+*[style*="color:#e8d5ff"] { color: #231a3b !important; font-weight: 700 !important; }
+*[style*="color:#9b7ec8"] { color: #4f7cff !important; font-weight: 700 !important; }
+*[style*="color:#c4d0e8"] { color: #6b4fa0 !important; font-weight: 700 !important; }
+
+.block-container .insight, .block-container .insight *,
+.block-container .post-banner, .block-container .post-banner *,
+.block-container .about-hero, .block-container .about-hero *,
+.block-container .about-card, .block-container .about-card *,
+.block-container .desc-box, .block-container .desc-box *,
+.block-container .kpi, .block-container .kpi * {
+    color: #231a3b !important;
+    font-weight: 600 !important;
+}
+
+.insight .category { color: #4f7cff !important; font-weight: 800 !important; }
+.chip { color: #ec4899 !important; }
+.kpi-sub { color: #6b4fa0 !important; }
+
+.ai-generated-panel {
+    background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(255,245,252,0.98)) !important;
+    border: 1px solid #d9e4f7 !important;
+    border-left: 4px solid #ec4899 !important;
+    border-radius: 16px !important;
+    box-shadow: 0 16px 38px rgba(20, 42, 84, 0.08) !important;
+    padding: 20px 22px !important;
+}
+.ai-generated-panel .ai-generated-title {
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    color: #14213d !important;
+    margin-bottom: 12px !important;
+}
+.ai-generated-panel .ai-generated-body {
+    font-size: 13px !important;
+    line-height: 1.8 !important;
+    color: #41506d !important;
+    font-weight: 400 !important;
+}
+.app-title, .ai-page-heading, .ai-generated-title, .login-brand, .post-banner-handle {
+    background: linear-gradient(135deg,#000000 0%, #14213d 50%, #ec4899 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+[data-testid="stSidebar"] .stButton > button { color: #000000 !important; }
+.block-container .stButton > button { color: #000000 !important; }
+.ai-page-heading {
+    font-size: 2rem !important;
+    font-weight: 800 !important;
+    color: #000000 !important;
+    letter-spacing: -0.03em !important;
+    margin-bottom: 6px !important;
+}
+.ai-page-subheading {
+    font-size: 0.98rem !important;
+    font-weight: 400 !important;
+    color: #5f6f8d !important;
+    line-height: 1.6 !important;
+    margin-bottom: 16px !important;
+}
+.ai-page-subheading b {
+    font-weight: 800 !important;
+    color: #14213d !important;
+}
+.ai-status-badge {
+    display: inline-block !important;
+    padding: 2px 8px !important;
+    border-radius: 999px !important;
+    background: rgba(79,124,255,0.08) !important;
+    border: 1px solid rgba(79,124,255,0.16) !important;
+    color: #4f7cff !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    margin-left: 6px !important;
+}
+.ai-response-heading {
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+    color: #14213d !important;
+    margin: 14px 0 6px !important;
+}
+.ai-response-text {
+    margin: 0 0 8px !important;
+    color: #41506d !important;
+    font-size: 13px !important;
+    line-height: 1.8 !important;
+    font-weight: 400 !important;
+}
+.ai-response-list {
+    margin: 0 0 8px 1.2rem !important;
+    padding: 0 !important;
+    color: #41506d !important;
+    font-size: 13px !important;
+    line-height: 1.8 !important;
+    font-weight: 400 !important;
+}
+.ai-response-list li { margin-bottom: 4px !important; }
+.ai-response-step {
+    margin: 0 0 8px !important;
+    color: #41506d !important;
+    font-size: 13px !important;
+    line-height: 1.8 !important;
+    font-weight: 400 !important;
+}
+.ai-response-step-no { font-weight: 800 !important; color: #14213d !important; }
+.ai-response-step-body { font-weight: 400 !important; color: #41506d !important; }
+
+.kpi-value {
+    background: linear-gradient(135deg, var(--ac, #4f7cff), var(--ac2, #ff4dad)) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+.kpi-bar,
+.login-logo,
+.stButton > button,
+.stFormSubmitButton > button,
+.stDownloadButton > button,
+.stFormSubmitButton > button,
+.st-key-FormSubmitter-login_form-LOGIN > div > button,
+.btn-secondary > button,
+[data-testid="stRadio"] input:checked + label {
+    background: linear-gradient(135deg, #4f7cff, #ff4dad) !important;
+    color: #ffffff !important;
+}
+
+.chip,
+.stat-pill,
+.about-tag,
+.login-pill,
+.hero-badges span {
+    background: rgba(79,124,255,0.08) !important;
+    border-color: rgba(79,124,255,0.18) !important;
+    color: #3f5478 !important;
+}
+
+.btn-secondary > button {
+    background: rgba(255,255,255,0.96) !important;
+    color: #4b5e80 !important;
+}
+
+[data-testid="stTextInput"] input,
+div[data-testid="stForm"] input,
+.stTextInput input {
+    background: rgba(255,255,255,0.98) !important;
+    border-color: #d7e0ee !important;
+    color: #15223b !important;
+}
+
+[data-testid="stTextInput"] label,
+[data-testid="stCheckbox"] label,
+[data-testid="stRadio"] label {
+    color: #6a7f9f !important;
+}
+
+.stCheckbox svg { fill: #ff4dad !important; }
+
+[data-testid="stSidebar"] .stSlider > div > div > div { background: #dbe6f5 !important; }
+[data-testid="stSidebar"] .stSlider > div > div > div > div { background: linear-gradient(90deg, #4f7cff, #ff4dad) !important; }
+[data-testid="stSidebar"] [data-baseweb="select"] *,
+[data-testid="stSidebar"] [data-baseweb="tag"] *,
+[role="listbox"] [role="option"] * { color: #183153 !important; }
+
+[data-testid="stDataFrame"] * { color: #162945 !important; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
 # ── COLOR PALETTES ─────────────────────────────────────────────
 CAT_CLR = {"tech":"#818cf8","fashion":"#ec4899","fitness":"#4ade80",
            "travel":"#c084fc","food":"#fbbf24"}
@@ -730,10 +992,10 @@ Q_CLR   = {"high":"#4ade80","medium":"#fbbf24","low":"#f87171"}
 
 DL = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="DM Sans", color="#9b7ec8", size=12),
-    xaxis=dict(gridcolor="#1e0d38", linecolor="#2d1555", zeroline=False),
-    yaxis=dict(gridcolor="#1e0d38", linecolor="#2d1555", zeroline=False),
-    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#2d1555", font=dict(size=11)),
+    font=dict(family="DM Sans", color="#5f6f8d", size=12),
+    xaxis=dict(gridcolor="#dde6f4", linecolor="#dbe6f5", zeroline=False),
+    yaxis=dict(gridcolor="#dde6f4", linecolor="#dbe6f5", zeroline=False),
+    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#dbe6f5", font=dict(size=11)),
     margin=dict(l=24, r=24, t=40, b=24))
 
 def dark(fig, h=300):
@@ -1081,7 +1343,7 @@ def _ai_section_prompt(section, leads_df, posts_df, post_id="", handle="", custo
             "Suggest who to contact first, who to nurture, and what operational focus would improve results."
         ),
         "Custom Question": (
-            "Answer the user’s custom question using the dataset context. "
+            "Answer the user's custom question using the dataset context. "
             "If the user asks about a specific Post ID or Handle, include the matching details clearly."
         ),
     }
@@ -1098,7 +1360,7 @@ def _ai_section_prompt(section, leads_df, posts_df, post_id="", handle="", custo
     return section_instruction, user_question, context_text, post_matches, handle_matches
 
 # ══════════════════════════════════════════════════════════════════
-# LOGIN PAGE — user/admin buttons with hero header from file.py
+# LOGIN PAGE
 # ══════════════════════════════════════════════════════════════════
 if not auth_status:
     query_page_mode = _get_page_mode_from_query()
@@ -1122,7 +1384,7 @@ header, footer {visibility:hidden;}
 [data-testid="stAppViewContainer"] > section.main > div.block-container{
     max-width:none !important;
     width:calc(100vw - 40px) !important;
-    margin:20px !important;
+    margin:0px 20px !important;
     padding:18px !important;
     border-radius:56px !important;
     background:transparent !important;
@@ -1136,75 +1398,48 @@ header, footer {visibility:hidden;}
     gap:28px !important;
     align-items:center !important;
     min-height:calc(100vh - 76px) !important;
-}
-# Ensure hero stays top aligned while the form column centers vertically
-# First column (hero) remains top-aligned
-# Second column (form) centers its content vertically
-# Use high-specificity selectors to override Streamlit defaults
-# Keep existing padding on the hero so it visually stays near the top
-# and center the form column contents
-#
-# Align first column to flex-start (top)
-#login-architecture + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child{
-    align-self:flex-start !important;
-}
-# Center the right/form column content vertically
-#login-architecture + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child{
     display:flex !important;
-    flex-direction:column !important;
-    justify-content:center !important;
-    align-items:flex-end !important;
-}
-#login-architecture + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]{
-    padding:0 !important;
 }
 #login-architecture + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child{
     position:relative !important;
     overflow:hidden !important;
     border-radius:40px !important;
-    padding:40px 42px !important;
+    padding:16px 42px !important;
     background:
         radial-gradient(circle at 18% 20%, rgba(255,59,212,0.30) 0%, rgba(255,59,212,0.10) 16%, rgba(255,59,212,0) 34%),
         radial-gradient(circle at 78% 28%, rgba(24,200,255,0.22) 0%, rgba(24,200,255,0.08) 18%, rgba(24,200,255,0) 34%),
         radial-gradient(circle at 50% 82%, rgba(93,86,255,0.16) 0%, rgba(93,86,255,0.04) 16%, rgba(93,86,255,0) 28%),
         linear-gradient(135deg, rgba(7,10,18,0.98) 0%, rgba(16,7,24,0.95) 44%, rgba(7,12,20,0.99) 100%) !important;
-    border:1px solid rgba(255,255,255,0.07) !important;
+    border:none !important;
     box-shadow:0 24px 70px rgba(0,0,0,0.42) !important;
 }
 #login-architecture + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child{
     position:relative !important;
     overflow:hidden !important;
-    border-radius:0 !important;
-    padding:22px 10px 18px !important;
-    background:transparent !important;
-    border:none !important;
-    box-shadow:none !important;
+    border-radius:40px !important;
+    padding:30px 34px 28px !important;
+    background:
+        radial-gradient(circle at 15% 12%, rgba(255,59,212,0.08) 0%, rgba(255,59,212,0) 24%),
+        radial-gradient(circle at 84% 20%, rgba(24,200,255,0.08) 0%, rgba(24,200,255,0) 22%),
+        linear-gradient(180deg, rgba(9,13,24,0.98) 0%, rgba(6,9,18,0.98) 100%) !important;
+    border:1px solid rgba(255,255,255,0.08) !important;
+    box-shadow:0 24px 70px rgba(0,0,0,0.34) !important;
 }
 div[data-testid="stForm"]{
     width:min(100%, 480px) !important;
     max-width:480px !important;
     margin-left:auto !important;
     margin-right:0 !important;
-    margin-top:-350px !important;
+    margin-top:-380px !important;
     padding-top:0 !important;
     background:transparent !important;
     border:none !important;
     box-shadow:none !important;
 }
-div[data-testid="stForm"] > div,
-div[data-testid="stForm"] [data-testid="stLayoutWrapper"],
-div[data-testid="stForm"] [data-testid="stVerticalBlock"],
-div[data-testid="stForm"] [data-testid="stElementContainer"]{
-    width:100% !important;
-    max-width:100% !important;
-}
-/* Make form internals use border-box so widths fill the constrained shell */
 div[data-testid="stForm"],
 div[data-testid="stForm"] * {
     box-sizing: border-box !important;
 }
-
-/* Ensure submit and standalone buttons align to the form width */
 div[data-testid="stForm"] .stFormSubmitButton,
 div[data-testid="stForm"] .stFormSubmitButton > button,
 div[data-testid="stForm"] .stButton > button,
@@ -1222,21 +1457,64 @@ div[data-testid="stButton"]{
 .login-hero-orb{position:absolute;border-radius:50%;pointer-events:none;filter:blur(3px);}
 .login-hero-orb.one{width:330px;height:330px;left:-120px;bottom:-120px;background:radial-gradient(circle, rgba(255,59,212,0.24) 0%, rgba(255,59,212,0) 70%);}
 .login-hero-orb.two{width:360px;height:360px;right:-140px;top:-140px;background:radial-gradient(circle, rgba(24,200,255,0.18) 0%, rgba(24,200,255,0) 70%);}
-.hero-kicker{display:block;color:#ff8fe8;font-size:0.8rem;font-weight:800;letter-spacing:.34em;text-transform:uppercase;margin-bottom:16px;}
-.hero-copy{display:block;margin-top:18px;max-width:560px;color:rgba(255,255,255,0.72);font-size:1rem;line-height:1.7;}
-.hero-badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px;}
-.hero-badges span{padding:10px 14px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);color:#fff;font-size:12px;font-weight:700;letter-spacing:.04em;}
 .card-head{position:relative;z-index:1;text-align:center;margin-bottom:6px !important;}
 .card-title{font-size:1.08rem;font-weight:600;color:#f4f7ff;letter-spacing:.02em;}
 .card-subtitle{margin-top:5px;color:#8ea0c7;font-size:0.88rem;}
-[data-testid="stHorizontalBlock"]{align-items:flex-start !important;}
-[data-testid="stHorizontalBlock"] > div:first-child{padding-top:8px !important;}
-[data-testid="stHorizontalBlock"] > div:last-child{padding-top:8px !important;}
-[data-testid="stHorizontalBlock"] > div:first-child .stMarkdown{margin-top:0 !important;}
-[data-testid="stHorizontalBlock"] > div:last-child .stMarkdown{margin-top:0 !important;}
-[data-testid="stHorizontalBlock"] > div:first-child .hero-brand{color:#ffffff !important;}
 .hero-brand{color:#ffffff;font-size:clamp(3.3rem,5vw,5.8rem);line-height:1.01;font-weight:600;letter-spacing:-0.06em;}
-.hero-brand .brand-name{text-decoration:none;}
+[data-testid="stRadio"]{margin-bottom:14px;}
+[data-testid="stRadio"] > div{justify-content:center !important;gap:8px !important;}
+[data-testid="stRadio"] label{
+    background:rgba(11,18,34,0.42) !important;
+    border:1px solid rgba(255,255,255,0.18) !important;
+    border-radius:999px !important;
+    padding:8px 20px !important;
+    color:#ffffff !important;
+    font-size:12px !important;
+    font-weight:600 !important;
+    cursor:pointer !important;
+    box-shadow:0 10px 20px rgba(0,0,0,0.20) !important;
+}
+[data-testid="stRadio"] input:checked + label{
+    background:linear-gradient(135deg,#ff4ad7 0%,#6adfff 100%) !important;
+    border-color:rgba(255,255,255,0.45) !important;
+    color:#000 !important;
+}
+[data-testid="stTextInput"]{margin-bottom:10px;width:100% !important;}
+[data-testid="stTextInput"] label{color:#8ea0c7 !important;font-size:11px !important;letter-spacing:.09em !important;font-weight:700 !important;padding-left:4px !important;margin-bottom:4px !important;text-transform:uppercase !important;}
+[data-testid="stTextInput"] input{
+    background:rgba(15,22,40,0.96) !important;
+    border:1px solid #22304a !important;
+    border-radius:11px !important;
+    color:#f4f7ff !important;
+    padding:0.58rem 0.85rem 0.56rem !important;
+    box-shadow:none !important;
+}
+.stTextInput input::placeholder{color:#64748b !important;}
+[data-testid="stTextInput"] input:focus{box-shadow:0 0 0 2px rgba(79,124,255,0.14) !important;border-color:#4f7cff !important;}
+[data-testid="stCheckbox"] label{color:#dbe7ff !important;font-size:11px !important;}
+.stCheckbox svg{fill:#ff4ad7 !important;}
+.auth-link-row{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:-2px 0 10px;}
+.auth-link-row a{color:#a78bfa !important;font-size:11px;text-decoration:none;font-weight:500;}
+.auth-link-row a:hover{text-decoration:underline;}
+/* ── SAMPLE 1 HERO (login left column) ───────────────────────── */
+.login-hero-content {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: none;
+    border-radius: 28px;
+    padding: 32px 36px;
+    max-width: 760px;
+    box-shadow: 0 20px 50px rgba(15,23,42,0.05);
+}
+.login-hero-content .s1-badge{display:inline-flex;align-items:center;gap:10px;background:rgba(219,39,119,0.08);border:1px solid rgba(219,39,119,0.18);color:#db2777;padding:8px 16px;border-radius:30px;font-weight:700;margin-bottom:18px;}
+.login-hero-content .s1-title{font-family:'Space Grotesk',sans-serif;font-size:clamp(2.6rem,6.5vw,4.6rem);font-weight:800;line-height:1.02;margin-bottom:12px;color:#0f172a;letter-spacing:-1px}
+.login-hero-content .s1-title .grad-1{background:linear-gradient(90deg,#0f172a 0%, #2563eb 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.login-hero-content .s1-title .grad-2{background:linear-gradient(90deg,#db2777 0%, #eab308 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.login-hero-content .s1-copy{color:#475569;font-size:1rem;line-height:1.6;margin-bottom:20px}
+.login-hero-content .s1-action-row{display:flex;gap:14px}
+.login-hero-content .btn-premium{background:linear-gradient(135deg,#2563eb 0%, #db2777 100%);color:#fff;border:none;padding:12px 20px;border-radius:14px;font-weight:800;cursor:default}
+.login-hero-content .btn-secondary{background:rgba(15,23,42,0.04);border:1px solid rgba(15,23,42,0.08);color:#0f172a;padding:12px 20px;border-radius:14px;font-weight:700;cursor:default}
 [data-testid="stHorizontalBlock"]{align-items:flex-start !important;}
 [data-testid="stRadio"]{margin-bottom:14px;}
 [data-testid="stRadio"] > div{justify-content:center !important;gap:8px !important;}
@@ -1278,28 +1556,83 @@ div[data-testid="stButton"]{
 .st-key-FormSubmitter-login_form-LOGIN{display:block !important;width:100% !important;max-width:none !important;flex:1 1 100% !important;align-self:stretch !important;min-width:0 !important;}
 .st-key-FormSubmitter-login_form-LOGIN > div{display:block !important;width:100% !important;max-width:none !important;}
 .stFormSubmitButton{display:block !important;width:100% !important;max-width:none !important;flex:1 1 100% !important;align-self:stretch !important;margin-top:2px !important;}
-.stFormSubmitButton > button,.stButton > button{
-    width:100% !important;
-    max-width:none !important;
-    display:block !important;
-    min-width:0 !important;
-    margin:0 !important;
-    border:none !important;
-    border-radius:12px !important;
-    background:linear-gradient(135deg,#4f7cff,#7c3aed) !important;
-    color:#fff !important;
-    font-size:12px !important;
-    font-weight:700 !important;
-    letter-spacing:.08em !important;
-    height:44px !important;
-    padding:0 0 !important;
-    box-shadow:0 18px 30px rgba(79,124,255,0.18) !important;
+div[data-testid="stFormSubmitButton"],
+div[data-testid="stButton"] {
+    width: 100% !important;
+    max-width: 480px !important;
+    margin-left: auto !important;
+    margin-right: 0 !important;
+    display: block !important;
 }
-.stFormSubmitButton > button:hover,.stButton > button:hover{filter:brightness(0.97) !important;transform:none;}
-.stButton > button{
-    height:44px !important;
+div[data-testid="stFormSubmitButton"] > button,
+div[data-testid="stButton"] > button,
+.stFormSubmitButton > button,
+.stButton > button,
+.btn-secondary > button {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: 50px !important;
+    border: none !important;
+    border-radius: 14px !important;
+    background: linear-gradient(90deg, #4f7cff 0%, #7c3aed 100%) !important;
+    color: #ffffff !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    box-shadow: 0 8px 24px rgba(79,124,255,0.28) !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+}
+div[data-testid="stFormSubmitButton"] > button:hover,
+div[data-testid="stButton"] > button:hover,
+.stFormSubmitButton > button:hover,
+.stButton > button:hover,
+.btn-secondary > button:hover {
+    filter: brightness(0.95) !important;
+    transform: none !important;
 }
 .auth-note{font-size:11px;color:#8ea0c7;text-align:center;margin-top:8px;}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+<style>
+.stApp{background:
+    radial-gradient(circle at 15% 18%, rgba(255,77,171,0.16) 0%, rgba(255,77,171,0.06) 18%, rgba(255,77,171,0) 34%),
+    radial-gradient(circle at 82% 24%, rgba(79,124,255,0.16) 0%, rgba(79,124,255,0.06) 18%, rgba(79,124,255,0) 34%),
+    radial-gradient(circle at 48% 78%, rgba(255,206,90,0.14) 0%, rgba(255,206,90,0.05) 18%, rgba(255,206,90,0) 30%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%) !important;}
+.card-title, .login-form-title{color:#14213d !important;}
+.card-subtitle, .login-form-sub{color:#6a7f9f !important;}
+.auth-link-row a{color:#4f7cff !important;}
+.auth-note{color:#6a7f9f !important;}
+.stFormSubmitButton > button,
+.stButton > button,
+.btn-secondary > button {
+    background: linear-gradient(90deg, #4f7cff 0%, #7c3aed 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 8px 24px rgba(79,124,255,0.28) !important;
+    width: 100% !important;
+    height: 50px !important;
+    border: none !important;
+    border-radius: 14px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+}
+[data-testid="stRadio"] label{background:rgba(255,255,255,0.86) !important;border:1px solid #dbe6f5 !important;color:#3f5478 !important;}
+[data-testid="stRadio"] input:checked + label{background:linear-gradient(135deg,#4f7cff,#ff4dad) !important;color:#ffffff !important;border-color:transparent !important;}
+[data-testid="stCheckbox"] label{color:#5f6f8d !important;}
+.stCheckbox svg{fill:#ff4dad !important;}
 </style>
 """,
         unsafe_allow_html=True,
@@ -1312,14 +1645,26 @@ div[data-testid="stButton"]{
 
     with hero_col:
         st.markdown(
-            """
+    """
 <div class="login-hero-orb one"></div>
 <div class="login-hero-orb two"></div>
-<div class="hero-kicker">WELCOME TO</div>
-<div class="hero-brand"><span class="brand-name">InstaScribe</span><br/>AI Creator<br/>Intelligence<br/>Platform</div>
+<div style="padding: 10px 8px;">
+    <div style="font-size: 12px; font-weight: 800; letter-spacing: .34em;
+                text-transform: uppercase; color: #E81CD9; margin-bottom: 16px;">
+        WELCOME TO
+    </div>
+    <h1 style="font-size: clamp(2.5rem, 5.5vw, 4.5rem); font-weight: 600;
+               line-height: 1.08; letter-spacing: -0.03em; margin: 0;
+               font-family: Optima, sans-serif;">
+        <span style="color: #ED5B40;">Insta</span><span style="color: #EBB244;">Scribe</span><br/>
+        <span style="color: #4F92E8;">AI </span><span style="color: #4F92E8;">Creator</span><br/>
+        <span style="color: #A565EB;">Intelligence</span><br/>
+        <span style="color: #ED6BB8;">Platform</span>
+    </h1>
+</div>
 """,
-            unsafe_allow_html=True,
-        )
+    unsafe_allow_html=True,
+)
 
     with form_col:
         subtitle_text = "Use your username or email to sign in" if login_mode == "User" else "Admin credentials required"
@@ -1506,9 +1851,77 @@ def desc(text):
 def grad_divider():
     st.markdown('<div class="grad-divider"></div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════
-# ADMIN-ONLY VIEW — stripped sidebar + User Store only
-# ══════════════════════════════════════════════════════════════════
+def _format_ai_response(text):
+    raw_lines = str(text or "").splitlines()
+    parts = []
+    in_list = False
+
+    def inline_bold(raw_text):
+        escaped_text = html.escape(raw_text)
+        return re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped_text)
+
+    def close_list():
+        nonlocal in_list
+        if in_list:
+            parts.append("</ul>")
+            in_list = False
+
+    for raw_line in raw_lines:
+        line = raw_line.strip()
+        if not line:
+            close_list()
+            continue
+
+        md_heading_match = re.match(r'^\s{0,3}(#{1,6})\s*(.+?)\s*:?\s*$', line)
+        heading_match = re.match(r'^\*\*(.+?)\*\*:?\s*$', line)
+        step_match = re.match(r'^(\d+\.)\s+(.*)$', line)
+        bullet_match = re.match(r'^(?:[-•*])\s+(.*)$', line)
+
+        if md_heading_match:
+            close_list()
+            heading = inline_bold(md_heading_match.group(2))
+            parts.append(f'<div class="ai-response-heading">{heading}</div>')
+            continue
+
+        if heading_match:
+            close_list()
+            heading = inline_bold(heading_match.group(1))
+            parts.append(f'<div class="ai-response-heading">{heading}</div>')
+            continue
+
+        if step_match:
+            close_list()
+            step_no = inline_bold(step_match.group(1))
+            step_body = inline_bold(step_match.group(2))
+            parts.append(
+                f'<div class="ai-response-step"><span class="ai-response-step-no">{step_no}</span> '
+                f'<span class="ai-response-step-body">{step_body}</span></div>'
+            )
+            continue
+
+        if bullet_match:
+            if not in_list:
+                parts.append("<ul class='ai-response-list'>")
+                in_list = True
+            parts.append(f'<li>{inline_bold(bullet_match.group(1))}</li>')
+            continue
+
+        close_list()
+        parts.append(f'<p class="ai-response-text">{inline_bold(line)}</p>')
+
+    close_list()
+    return "\n".join(parts)
+
+def _render_ai_panel(title, body, accent="#4f7cff", margin_top=False):
+    escaped_body = _format_ai_response(body)
+    mt = "margin-top:12px;" if margin_top else ""
+    st.markdown(
+        f'<div class="ai-generated-panel" style="--ac:{accent};{mt}">'
+        f'<div class="ai-generated-title">{html.escape(title)}</div>'
+        f'<div class="ai-generated-body">{escaped_body}</div></div>',
+        unsafe_allow_html=True,
+    )
+
 # ══════════════════════════════════════════════════════════════════
 # ADMIN-ONLY VIEW
 # ══════════════════════════════════════════════════════════════════
@@ -1516,7 +1929,6 @@ if is_admin:
     active_sessions = _get_active_sessions()
     active_session_count = len(active_sessions)
 
-    # ── Sidebar ───────────────────────────────────────────────────
     with st.sidebar:
         st.markdown(
             '<div style="padding:.8rem 0 1.4rem">'
@@ -1533,7 +1945,6 @@ if is_admin:
         st.write(f'Welcome **{name}**')
         authenticator.logout('Logout', 'sidebar', callback=_clear_active_session)
 
-    # ── Header ────────────────────────────────────────────────────
     st.markdown(
         f'<div class="app-header">'
         f'<div class="app-header-card">'
@@ -1550,7 +1961,6 @@ if is_admin:
         f'</div></div>',
         unsafe_allow_html=True)
 
-    # ── Admin sub-page state ──────────────────────────────────────
     if "admin_page" not in st.session_state:
         st.session_state["admin_page"] = "users"
     if "edit_user" not in st.session_state:
@@ -1568,30 +1978,24 @@ if is_admin:
         else:
             st.info(flash_message)
 
-    # ── KPI row ───────────────────────────────────────────────────
     all_users  = auth_store["credentials"]["usernames"]
     total_u    = len(all_users)
     admin_u    = sum(1 for u in all_users.values() if u.get("role") == "admin")
     member_u   = total_u - admin_u
 
     k1, k2, k3, k4 = st.columns(4, gap="large")
-    k1.markdown(kpi("Registered Users",  f"{total_u:,}",           "stored securely in YAML",        "#818cf8","#6366f1", 75), unsafe_allow_html=True)
-    k2.markdown(kpi("Active Sessions",   f"{active_session_count}","browser sessions right now",      "#4ade80","#22c55e", min(active_session_count*25,100)), unsafe_allow_html=True)
-    k3.markdown(kpi("Admins",            f"{admin_u}",             "with elevated privileges",        "#f87171","#ef4444", int(admin_u/max(total_u,1)*100)), unsafe_allow_html=True)
-    k4.markdown(kpi("Members",           f"{member_u}",            "standard user accounts",          "#c084fc","#a855f7", int(member_u/max(total_u,1)*100)), unsafe_allow_html=True)
+    k1.markdown(kpi("Registered Users",  f"{total_u:,}",           "stored securely in Supabase",      "#818cf8","#6366f1", 75), unsafe_allow_html=True)
+    k2.markdown(kpi("Active Sessions",   f"{active_session_count}","browser sessions right now",        "#4ade80","#22c55e", min(active_session_count*25,100)), unsafe_allow_html=True)
+    k3.markdown(kpi("Admins",            f"{admin_u}",             "with elevated privileges",          "#f87171","#ef4444", int(admin_u/max(total_u,1)*100)), unsafe_allow_html=True)
+    k4.markdown(kpi("Members",           f"{member_u}",            "standard user accounts",            "#c084fc","#a855f7", int(member_u/max(total_u,1)*100)), unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top:6px'></div>", unsafe_allow_html=True)
 
-    # ── Tab navigation ────────────────────────────────────────────
     tab_users, tab_add, tab_sessions = st.tabs(["👥  User Store", "➕  Add User", "🖥️  Active Sessions"])
 
-    # ════════════════════════════════════════════════════════
-    # TAB 1 — USER STORE (search + table + edit/delete/reset)
-    # ════════════════════════════════════════════════════════
     with tab_users:
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
-        # Search bar + refresh button
         search_col, refresh_col = st.columns([0.88, 0.12], gap="small")
         with search_col:
             search_q = st.text_input(
@@ -1599,29 +2003,20 @@ if is_admin:
                 placeholder="Type username or email…",
                 key="admin_search"
             )
-        with refresh_col:
-            st.markdown('<div style="height:1.6rem"></div>', unsafe_allow_html=True)
-            if st.button("🔄 Refresh", key="admin_user_refresh", use_container_width=True, help="Refresh User Store"):
-                _refresh_admin_view("users")
-
-        # Build rows
         user_rows = []
-        for stored_username, record in auth_store["credentials"]["usernames"].items():
-            details = record.get("details", {}) if isinstance(record.get("details", {}), dict) else {}
+        for username_k, record in all_users.items():
             user_rows.append({
-                "username_key": stored_username,
-                "Username":     stored_username,
-                "Name":         record.get("name", ""),
-                "Email":        record.get("email", ""),
-                "Role":         record.get("role", "member"),
-                "Company":      details.get("company", ""),
-                "Created At":   record.get("created_at", "")[:10] if record.get("created_at") else "",
-                "Password Hash":_mask_hash(record.get("password", "")),
+                "Username": username_k,
+                "Name": record.get("name", ""),
+                "Email": record.get("email", ""),
+                "Role": record.get("role", "member"),
+                "Company": record.get("company", ""),
+                "Created At": record.get("created_at", ""),
+                "Password Hash": _mask_hash(record.get("password", "")),
             })
 
         users_df = pd.DataFrame(user_rows).sort_values("Username").reset_index(drop=True)
 
-        # Apply search filter
         if search_q.strip():
             q_low = search_q.strip().lower()
             mask  = (
@@ -1638,7 +2033,6 @@ if is_admin:
             unsafe_allow_html=True
         )
 
-        # Display table (hide internal key column)
         display_cols = ["Username","Name","Email","Role","Company","Created At","Password Hash"]
         st.dataframe(filtered_df[display_cols], use_container_width=True, hide_index=True)
         st.caption("Passwords are never stored in plain text. Only salted hashes are persisted.")
@@ -1656,9 +2050,8 @@ if is_admin:
                 record_m = auth_store["credentials"]["usernames"].get(sel_manage, {})
                 details_m = record_m.get("details", {}) if isinstance(record_m.get("details", {}), dict) else {}
 
-                action_col1, action_col2, action_col3 = st.columns(3, gap="small")
+                action_col1, action_col2 = st.columns(2, gap="xxsmall")
 
-                # ── EDIT ──────────────────────────────────────────
                 with action_col1:
                     st.markdown(
                         '<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);'
@@ -1679,7 +2072,6 @@ if is_admin:
 
                     if save_edit:
                         new_email_val = new_email.strip().lower()
-                        # Check email uniqueness (allow same user's own email)
                         conflict = any(
                             u.get("email","").strip().lower() == new_email_val and uname != sel_manage
                             for uname, u in auth_store["credentials"]["usernames"].items()
@@ -1687,7 +2079,6 @@ if is_admin:
                         if conflict:
                             st.error("Email already used by another account.")
                         else:
-                            # Build updated record and persist to DB
                             updated_details = dict(details_m)
                             updated_details["company"] = new_company.strip()
                             updated_record = dict(record_m)
@@ -1700,35 +2091,7 @@ if is_admin:
                             st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
 
-                # ── RESET PASSWORD ────────────────────────────────
                 with action_col2:
-                    st.markdown(
-                        '<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);'
-                        'border:1px solid #2d1555;border-left:3px solid #fbbf24;'
-                        'border-radius:14px;padding:18px 20px;">'
-                        '<div style="font-size:12px;font-weight:700;color:#fbbf24;'
-                        'text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">🔑 Reset Password</div>',
-                        unsafe_allow_html=True
-                    )
-                    with st.form(f"reset_form_{sel_manage}", clear_on_submit=True):
-                        new_pw  = st.text_input("New Password", type="password", key="rf_pw",
-                                                help="Min 8 chars · upper · lower · digit")
-                        conf_pw = st.text_input("Confirm",      type="password", key="rf_conf")
-                        do_reset = st.form_submit_button("🔒 Reset Password")
-
-                    if do_reset:
-                        if new_pw != conf_pw:
-                            st.error("Passwords do not match.")
-                        elif not _is_strong_password(new_pw):
-                            st.error("Needs 8+ chars, upper, lower, digit.")
-                        else:
-                            _set_password(sel_manage, new_pw)
-                            _set_admin_flash(f"Password reset for **{sel_manage}**.")
-                            st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
-
-                # ── DELETE ────────────────────────────────────────
-                with action_col3:
                     st.markdown(
                         '<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);'
                         'border:1px solid #2d1555;border-left:3px solid #f87171;'
@@ -1763,9 +2126,6 @@ if is_admin:
                                 st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ════════════════════════════════════════════════════════
-    # TAB 2 — ADD NEW USER
-    # ════════════════════════════════════════════════════════
     with tab_add:
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
         st.markdown(
@@ -1816,15 +2176,12 @@ if is_admin:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ════════════════════════════════════════════════════════
-    # TAB 3 — ACTIVE SESSIONS
-    # ════════════════════════════════════════════════════════
     with tab_sessions:
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
         sessions = _get_active_sessions()
         if not sessions:
-            st.info("No active sessions recorded in this server process.")
+            st.info("No active sessions recorded.")
         else:
             sec(f"🖥️ Active Sessions — {len(sessions)} online")
             sess_df = pd.DataFrame([
@@ -1841,7 +2198,7 @@ if is_admin:
 
             st.markdown(
                 '<div class="insight" style="--ac:#4ade80;margin-top:12px">'
-                '💡 <b>Session tracking</b> is shared across tabs through SQLite. '
+                '💡 <b>Session tracking</b> is persisted in Supabase. '
                 'Active sessions are refreshed whenever an authenticated user loads a page. '
                 'Old sessions are pruned automatically after inactivity.</div>',
                 unsafe_allow_html=True
@@ -1866,14 +2223,27 @@ with st.sidebar:
         'background:linear-gradient(135deg,#a855f7,#ec4899);'
         'display:flex;align-items:center;justify-content:center;font-size:16px">📱</div>'
         '<div>'
-        '<div style="font-size:1.05rem;font-weight:700;color:#f0e6ff">InstaScribe</div>'
-        '<div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;'
+        '<div style="font-size:1.05rem;font-weight:700;color:#000000">InstaScribe</div>'
+        '<div style="font-size:10px;color:#000000;text-transform:uppercase;'
         'letter-spacing:.1em">Creator Intelligence</div>'
         '</div></div></div>',
         unsafe_allow_html=True)
 
-    st.write(f'Welcome **{name}**')
-    authenticator.logout('Logout', 'sidebar', callback=_clear_active_session)
+    st.markdown(
+    f"""
+    <div style="
+        color:#0F0F0F;
+        font-size:15px;
+        font-weight:700;
+        margin-bottom:12px;
+    ">
+        Welcome {name}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+    if auth_status:
+        authenticator.logout('Logout', 'sidebar', callback=_clear_active_session)
 
     st.markdown('<div style="font-size:15px;font-weight:600;color:#a855f7;'
                 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">🎛 Filters</div>',
@@ -1974,16 +2344,16 @@ page = option_menu(None,
     orientation="horizontal",
     styles={
         "container": {
-            "background": "linear-gradient(135deg,#1a0d2e,#150a24)",
-            "border": "1px solid #2d1555",
+            "background": "linear-gradient(135deg,#ffffff,#f5f8ff)",
+            "border": "1px solid #dbe6f5",
             "border-radius": "12px", "padding": "5px 10px"
         },
         "nav-link": {
-            "font-size": "13px", "color": "#6b4fa0",
+            "font-size": "13px", "color": "#5f6f8d",
             "border-radius": "8px", "padding": "7px 14px"
         },
         "nav-link-selected": {
-            "background": "linear-gradient(135deg,#7e22ce,#be185d)",
+            "background": "linear-gradient(135deg,#4f7cff,#ff4dad)",
             "color": "#fff", "font-weight": "600"
         },
         "icon": {"font-size": "13px"},
@@ -2029,14 +2399,14 @@ if page == "Executive Overview":
         top_eqr  = (leads.assign(EQR=leads["Engagement"]/leads["Follower_Count"].replace(0,np.nan)).groupby("Category_Name")["EQR"].mean().idxmax())
 
         i1, i2, i3 = st.columns(3)
-        i1.markdown(f'<div class="insight" style="--ac:#818cf8">📌 <b>{top_er.title()}</b> leads with the highest avg engagement rate across {total:,} influencers in view.</div>', unsafe_allow_html=True)
-        i2.markdown(f'<div class="insight" style="--ac:#4ade80">📡 <b>{top_fol.title()}</b> dominates follower reach — best for brand awareness campaigns.</div>', unsafe_allow_html=True)
-        i3.markdown(f'<div class="insight" style="--ac:#fbbf24">🎯 <b>{hq:,}</b> leads outreach-ready ({hq/max(total,1)*100:.1f}%). Top vertical: <b>{str(top_hq).title()}</b>.</div>', unsafe_allow_html=True)
+        i1.markdown(f'<div class="insight" style="--ac:#818cf8">📌 <b class="category">{top_er.title()}</b> leads with the highest avg engagement rate across {total:,} influencers in view.</div>', unsafe_allow_html=True)
+        i2.markdown(f'<div class="insight" style="--ac:#4ade80">📡 <b class="category">{top_fol.title()}</b> dominates follower reach — best for brand awareness campaigns.</div>', unsafe_allow_html=True)
+        i3.markdown(f'<div class="insight" style="--ac:#fbbf24">🎯 <b>{hq:,}</b> leads outreach-ready ({hq/max(total,1)*100:.1f}%). Top vertical: <b class="category">{str(top_hq).title()}</b>.</div>', unsafe_allow_html=True)
 
         st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
         i4, i5, i6 = st.columns(3)
         i4.markdown(f'<div class="insight" style="--ac:#c084fc">🏷 Dominant tier: <b>{tier_top}</b>. Avg lead score: <b>{avg_sc:.1f} / 100</b>.</div>', unsafe_allow_html=True)
-        i5.markdown(f'<div class="insight" style="--ac:#ec4899">💡 <b>{top_eqr.title()}</b> has the best engagement quality ratio — most impactful audience per follower.</div>', unsafe_allow_html=True)
+        i5.markdown(f'<div class="insight" style="--ac:#ec4899">💡 <b class="category">{top_eqr.title()}</b> has the best engagement quality ratio — most impactful audience per follower.</div>', unsafe_allow_html=True)
         i6.markdown(f'<div class="insight" style="--ac:#4ade80">⏳ <b>{med:,}</b> medium leads ({med/max(total,1)*100:.1f}%) in the nurture pipeline.</div>', unsafe_allow_html=True)
     else:
         st.info("No data matches the current filters — adjust the sidebar.")
@@ -2091,7 +2461,17 @@ if page == "Executive Overview":
                 eng_bar["Color"] = eng_bar["Category_Name"].map(lambda x: CAT_CLR.get(str(x).lower(), "#a855f7"))
                 fig_a = go.Figure()
                 for _, r in eng_bar.iterrows():
-                    fig_a.add_trace(go.Bar(x=[r["Category_Name"]], y=[r["Engagement"]], marker_color=r["Color"], marker_line_width=0, text=[fmt(int(r["Engagement"]))], textposition="outside", textfont=dict(color="#9b7ec8", size=11), name=r["Category_Name"]))
+                    fig_a.add_trace(go.Bar(
+                        x=[r["Category_Name"]],
+                        y=[r["Engagement"]],
+                        marker_color=r["Color"],
+                        marker_line_width=0,
+                        opacity=0.92,
+                        text=[fmt(int(r["Engagement"]))],
+                        textposition="outside",
+                        textfont=dict(color="#ffffff", size=11),
+                        name=r["Category_Name"],
+                    ))
                 dark(fig_a, 280)
                 fig_a.update_layout(title=dict(text="Total Engagement", font=dict(size=12,color="#6b4fa0")), showlegend=False, bargap=0.4)
                 st.plotly_chart(fig_a, use_container_width=True)
@@ -2101,7 +2481,17 @@ if page == "Executive Overview":
                 fol_bar["Color"] = fol_bar["Category_Name"].map(lambda x: CAT_CLR.get(str(x).lower(), "#a855f7"))
                 fig_b = go.Figure()
                 for _, r in fol_bar.iterrows():
-                    fig_b.add_trace(go.Bar(x=[r["Category_Name"]], y=[r["Follower_Count"]], marker_color=r["Color"], marker_line_width=0, text=[fmt(int(r["Follower_Count"]))], textposition="outside", textfont=dict(color="#9b7ec8", size=11), name=r["Category_Name"]))
+                    fig_b.add_trace(go.Bar(
+                        x=[r["Category_Name"]],
+                        y=[r["Follower_Count"]],
+                        marker_color=r["Color"],
+                        marker_line_width=0,
+                        opacity=0.92,
+                        text=[fmt(int(r["Follower_Count"]))],
+                        textposition="outside",
+                        textfont=dict(color="#ffffff", size=11),
+                        name=r["Category_Name"],
+                    ))
                 dark(fig_b, 280)
                 fig_b.update_layout(title=dict(text="Avg Follower Count", font=dict(size=12,color="#6b4fa0")), showlegend=False, bargap=0.4)
                 st.plotly_chart(fig_b, use_container_width=True)
@@ -2150,12 +2540,12 @@ elif page == "Lead Intelligence":
         if "Category_Name" in leads.columns and "Following_Count" in leads.columns:
             fc_cat = leads.groupby("Category_Name")["Following_Count"].mean().sort_values()
             max_fc = fc_cat.max() if fc_cat.max() > 0 else 1
-            html = '<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;border-radius:14px;padding:18px 20px">'
+            html_str = '<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;border-radius:14px;padding:18px 20px">'
             for cat, val in fc_cat.items():
                 color = CAT_CLR.get(str(cat).lower(), "#a855f7")
-                html += pb(str(cat).title(), f"{round(val):,}", val / max_fc * 100, color)
-            html += '<div style="font-size:10.5px;color:#6b4fa0;margin-top:10px">Lower number = fewer accounts followed = organic creator</div></div>'
-            st.markdown(html, unsafe_allow_html=True)
+                html_str += pb(str(cat).title(), f"{round(val):,}", val / max_fc * 100, color)
+            html_str += '<div style="font-size:10.5px;color:#6b4fa0;margin-top:10px">Lower number = fewer accounts followed = organic creator</div></div>'
+            st.markdown(html_str, unsafe_allow_html=True)
 
     sec("Follower Tier Distribution & Engagement Rate by Category")
     ch3, ch4 = st.columns(2)
@@ -2164,8 +2554,16 @@ elif page == "Lead Intelligence":
         if "Category_Name" in leads.columns:
             tier_order = ["Nano (<10K)","Micro (10K-100K)","Mid (100K-500K)","Macro (500K-1M)","Mega (1M+)"]
             td = leads.groupby(["Category_Name","Follower_Tier"]).size().reset_index(name="Count")
-            fig3 = px.bar(td, x="Category_Name", y="Count", color="Follower_Tier", barmode="stack", category_orders={"Follower_Tier":tier_order}, color_discrete_sequence=["#2d1555","#6d28d9","#a855f7","#d8b4fe","#f3e8ff"])
-            fig3.update_traces(marker_line_width=0)
+            fig3 = px.bar(
+                td,
+                x="Category_Name",
+                y="Count",
+                color="Follower_Tier",
+                barmode="stack",
+                category_orders={"Follower_Tier":tier_order},
+                color_discrete_sequence=["#2563eb", "#db2777", "#eab308", "#3b82f6", "#be185d"],
+            )
+            fig3.update_traces(marker_line_width=0, opacity=0.92, textfont=dict(color="#ffffff"), hovertemplate=None)
             dark(fig3, 290)
             fig3.update_layout(title=dict(text="Follower Tier Stack by Category",font=dict(size=12,color="#6b4fa0")), bargap=0.25)
             st.plotly_chart(fig3, use_container_width=True)
@@ -2177,13 +2575,15 @@ elif page == "Lead Intelligence":
             fig4 = go.Figure()
             for _, r in er_cat.sort_values("mean", ascending=False).iterrows():
                 fig4.add_trace(go.Bar(
-                    x=[r["Category_Name"]], y=[r["mean"]],
-                    marker_color=r["Color"], marker_line_width=0,
-                    error_y=dict(type="data", array=[max(r["max"]-r["mean"],0)], arrayminus=[max(r["mean"]-r["min"],0)], thickness=1, width=4, color="#9b7ec8"),
-                    text=[f"{r['mean']:.2f}%"], textposition="outside",
-                    textfont=dict(color="#9b7ec8", size=11),
-                    hovertemplate=f"<b>{r['Category_Name']}</b><br>Avg ER: {r['mean']:.2f}%<br>Min: {r['min']:.2f}%<br>Max: {r['max']:.2f}%<extra></extra>",
-                    name=r["Category_Name"]))
+                        x=[r["Category_Name"]], y=[r["mean"]],
+                        marker_color=r["Color"], marker_line_width=0,
+                        opacity=0.92,
+                        error_y=dict(type="data", array=[max(r["max"]-r["mean"],0)], arrayminus=[max(r["mean"]-r["min"],0)], thickness=1, width=4, color="#9b7ec8"),
+                        text=[f"{r['mean']:.2f}%"], textposition="outside",
+                        textfont=dict(color="#ffffff", size=11),
+                        hovertemplate=f"<b>{r['Category_Name']}</b><br>Avg ER: {r['mean']:.2f}%<br>Min: {r['min']:.2f}%<br>Max: {r['max']:.2f}%<extra></extra>",
+                        name=r["Category_Name"],
+                    ))
             dark(fig4, 290)
             fig4.update_layout(title=dict(text="Average Engagement Rate by Category",font=dict(size=12,color="#6b4fa0")), showlegend=False, bargap=0.35)
             st.plotly_chart(fig4, use_container_width=True)
@@ -2353,8 +2753,14 @@ elif page == "Post Analytics":
                     hp["Label"] = hp["Post_Date"].dt.strftime("%b %d")
                     hp = hp.tail(15).reset_index(drop=True)
                     fig_h2 = go.Figure()
-                    fig_h2.add_trace(go.Bar(y=hp["Label"], x=hp["Likes"], name="Likes", orientation="h", marker_color="#818cf8", marker_line_width=0, opacity=0.85))
-                    fig_h2.add_trace(go.Bar(y=hp["Label"], x=hp["Comments"], name="Comments", orientation="h", marker_color="#ec4899", marker_line_width=0, opacity=0.85))
+                    fig_h2.add_trace(go.Bar(
+                        y=hp["Label"], x=hp["Likes"], name="Likes", orientation="h",
+                        marker_color="#2563eb", marker_line_width=0, opacity=0.92,
+                    ))
+                    fig_h2.add_trace(go.Bar(
+                        y=hp["Label"], x=hp["Comments"], name="Comments", orientation="h",
+                        marker_color="#db2777", marker_line_width=0, opacity=0.92,
+                    ))
                     sel_label = pd.to_datetime(sel_date).strftime("%b %d") if pd.notna(sel_date) else None
                     if sel_label and sel_label in hp["Label"].values:
                         idx = hp[hp["Label"]==sel_label].index[0]
@@ -2365,8 +2771,13 @@ elif page == "Post Analytics":
 
             sec(f"Monthly Engagement — @{handle}")
             monthly_h = handle_posts.groupby("Month")["Engagement"].sum().reset_index().sort_values("Month")
-            fig_h3 = px.bar(monthly_h, x="Month", y="Engagement", color_discrete_sequence=["#a855f7"])
-            fig_h3.update_traces(marker_line_width=0)
+            fig_h3 = px.bar(
+                monthly_h,
+                x="Month",
+                y="Engagement",
+                color_discrete_sequence=["#2563eb"],
+            )
+            fig_h3.update_traces(marker_line_width=0, opacity=0.92, textposition="outside", textfont=dict(color="#ffffff"))
             dark(fig_h3, 240)
             fig_h3.update_layout(title=dict(text="Monthly Engagement for this Influencer", font=dict(size=12,color="#6b4fa0")), bargap=0.25)
             st.plotly_chart(fig_h3, use_container_width=True)
@@ -2380,7 +2791,10 @@ elif page == "Post Analytics":
     with ch1:
         me = posts_pa.groupby("Month")["Engagement"].sum().reset_index().sort_values("Month")
         fig = go.Figure()
-        fig.add_trace(go.Bar(x=me["Month"], y=me["Engagement"], marker_color="#a855f7", marker_line_width=0, opacity=0.85, name="Engagement"))
+        fig.add_trace(go.Bar(
+            x=me["Month"], y=me["Engagement"],
+            marker_color="#2563eb", marker_line_width=0, opacity=0.92, name="Engagement",
+        ))
         fig.add_trace(go.Scatter(x=me["Month"], y=me["Engagement"], mode="lines", line=dict(color="#ec4899",width=1.5), showlegend=False))
         dark(fig, 300)
         fig.update_layout(title=dict(text="Monthly Post Engagement", font=dict(size=12,color="#6b4fa0")), bargap=0.22)
@@ -2561,7 +2975,6 @@ elif page == "Lead Scoring":
 # PAGE 5 — AI INSIGHTS
 # ==========================================================
 elif page == "AI Insights":
-    # ── init session state ─────────────────────────────────
     for key in ["ai_chat_history","ai_exec_summary","ai_post_result",
                 "ai_content_result","ai_rec_result","ai_custom_result"]:
         if key not in st.session_state:
@@ -2570,11 +2983,10 @@ elif page == "AI Insights":
     groq_ok = _groq_client() is not None
 
     st.markdown(
-        f'<p style="color:#6b4fa0;font-size:15px;margin-bottom:0.4rem">'
-        f'Groq-powered AI Intelligence — chat, analyse, and generate insights from your data · '
-        f'<b style="color:{"#4ade80" if groq_ok else "#f87171"}">'
-        f'{"✅ Groq connected" if groq_ok else "⚠️ Groq not configured — add GROQ_API_KEY to .env or secrets.toml"}'
-        f'</b></p>', unsafe_allow_html=True)
+    f'<div class="ai-page-heading">AI Insights</div>'
+    f'<div class="ai-page-subheading"><b>Groq-powered AI Intelligence</b> — chat, analyse, and generate insights from your data '
+    f'<span class="ai-status-badge">{"✅ Groq connected" if groq_ok else "⚠️ Groq not configured — add GROQ_API_KEY to .env or secrets.toml"}</span></div>',
+    unsafe_allow_html=True)
 
     scope_choice = st.radio("Data scope",["All data","Current dashboard filters"],
                             index=0, horizontal=True)
@@ -2587,7 +2999,6 @@ elif page == "AI Insights":
         "📝 Content Analyser", "🎯 Recommendations", "❓ Custom Question",
     ])
 
-    # ── TAB 1 AI CHAT ─────────────────────────────────────
     with tab_chat:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         desc("<b>AI Dashboard Chat</b> — ask anything about your influencer data. "
@@ -2675,7 +3086,6 @@ elif page == "AI Insights":
                 st.session_state["ai_chat_history"].append({"role":"assistant","content":err if err else answer})
                 st.rerun()
 
-    # ── TAB 2 EXECUTIVE SUMMARY ───────────────────────────
     with tab_exec:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         desc("<b>Executive Summary</b> — one-click AI briefing: lead quality, top categories, engagement health, and key actions.")
@@ -2688,12 +3098,7 @@ elif page == "AI Insights":
             st.session_state["ai_exec_summary"] = err if err else answer
 
         if st.session_state["ai_exec_summary"]:
-            escaped = html.escape(str(st.session_state["ai_exec_summary"])).replace("\n","<br>")
-            st.markdown(
-                f'<div class="insight" style="--ac:#a855f7;padding:20px 22px;">'
-                f'<div style="font-size:11px;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">✨ AI Executive Summary</div>'
-                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
-                unsafe_allow_html=True)
+            _render_ai_panel("✨ AI Executive Summary", st.session_state["ai_exec_summary"], accent="#a855f7")
             st.markdown('<div style="margin-top:16px"></div>', unsafe_allow_html=True)
             sec("📊 Live Snapshot")
             s1,s2,s3,s4 = st.columns(4, gap="large")
@@ -2703,12 +3108,17 @@ elif page == "AI Insights":
             avg_sc= float(ai_leads["Lead_Score"].mean())           if "Lead_Score"      in ai_leads.columns else 0
             s1.markdown(kpi("High Priority Leads", fmt(hq_n),      "ready for outreach",       "#4ade80","#22c55e",70), unsafe_allow_html=True)
             s2.markdown(kpi("Avg Engagement Rate", f"{avg_e:.2f}%","across all influencers",   "#818cf8","#6366f1",60), unsafe_allow_html=True)
-            s3.markdown(kpi("Avg Sentiment",f"{avg_s:.3f}",        "−1 negative · +1 positive","#c084fc","#a855f7",int((avg_s+1)/2*100)), unsafe_allow_html=True)
+            if avg_s > 0:
+                _sent_label = "Positive"; _sent_ac = "#4ade80"; _sent_ac2 = "#16a34a"
+            elif avg_s < 0:
+                _sent_label = "Negative"; _sent_ac = "#f87171"; _sent_ac2 = "#ef4444"
+            else:
+                _sent_label = "Neutral"; _sent_ac = "#818cf8"; _sent_ac2 = "#6366f1"
+            s3.markdown(kpi("Avg Sentiment", _sent_label, "−1 negative · +1 positive", _sent_ac, _sent_ac2, int((avg_s+1)/2*100)), unsafe_allow_html=True)
             s4.markdown(kpi("Avg Lead Score",f"{avg_sc:.1f}",      "out of 100",               "#fbbf24","#f59e0b",int(avg_sc)), unsafe_allow_html=True)
         else:
             st.markdown('<div class="insight" style="--ac:#818cf8;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">📊</div><div style="font-size:13px;color:#9fb0d2">Click <b style="color:#f4f7ff">Generate Executive Summary</b> to get an AI briefing.</div></div>', unsafe_allow_html=True)
 
-    # ── TAB 3 POST ID ANALYSER ────────────────────────────
     with tab_post:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         desc("<b>Post ID Analyser</b> — deep-dive any post: metrics, vs-handle-average, sentiment, and recommendation.")
@@ -2732,12 +3142,7 @@ elif page == "AI Insights":
                 st.session_state["ai_post_result"] = err if err else answer
 
         if st.session_state["ai_post_result"]:
-            escaped = html.escape(str(st.session_state["ai_post_result"])).replace("\n","<br>")
-            st.markdown(
-                f'<div class="insight" style="--ac:#818cf8;padding:20px 22px;margin-top:12px;">'
-                f'<div style="font-size:11px;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🔍 Post Analysis — {html.escape(post_id_val.strip() or "")}</div>'
-                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
-                unsafe_allow_html=True)
+            _render_ai_panel(f"🔍 Post Analysis — {post_id_val.strip() or ''}", st.session_state["ai_post_result"], accent="#818cf8", margin_top=True)
             if post_id_val.strip() and "Post_ID" in ai_posts.columns:
                 raw_row=ai_posts[ai_posts["Post_ID"].astype(str).str.strip().str.lower()==post_id_val.strip().lower()]
                 if len(raw_row)>0:
@@ -2747,7 +3152,6 @@ elif page == "AI Insights":
         else:
             st.markdown('<div class="insight" style="--ac:#818cf8;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">🔍</div><div style="font-size:13px;color:#9fb0d2">Enter a <b style="color:#f4f7ff">Post ID</b> above and click Analyse Post.</div></div>', unsafe_allow_html=True)
 
-    # ── TAB 4 CONTENT ANALYSER ────────────────────────────
     with tab_content:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         desc("<b>Post Content Analyser</b> — pick a Handle to analyse all their posts. "
@@ -2779,16 +3183,10 @@ elif page == "AI Insights":
                     hp3.markdown(kpi("Lead Score",     f"{safe_float(h_row.get('Lead_Score')):.1f}",    "/100",             "#c084fc","#a855f7",int(safe_float(h_row.get('Lead_Score')))), unsafe_allow_html=True)
                     hp4.markdown(kpi("Sentiment",      sent_t,                                         "",                 sent_c,sent_c,70), unsafe_allow_html=True)
                     st.markdown('<div style="margin-top:12px"></div>', unsafe_allow_html=True)
-            escaped = html.escape(str(st.session_state["ai_content_result"])).replace("\n","<br>")
-            st.markdown(
-                f'<div class="insight" style="--ac:#4ade80;padding:20px 22px;">'
-                f'<div style="font-size:11px;font-weight:700;color:#4ade80;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">📝 Content Strategy — {html.escape(content_handle or "")}</div>'
-                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
-                unsafe_allow_html=True)
+            _render_ai_panel(f"📝 Content Strategy — {content_handle or ''}", st.session_state["ai_content_result"], accent="#4ade80")
         else:
             st.markdown('<div class="insight" style="--ac:#4ade80;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">📝</div><div style="font-size:13px;color:#9fb0d2">Select a <b style="color:#f4f7ff">Handle</b> and click Analyse Content Strategy.</div></div>', unsafe_allow_html=True)
 
-    # ── TAB 5 RECOMMENDATIONS ─────────────────────────────
     with tab_rec:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         desc("<b>AI Recommendations</b> — action-oriented outreach and campaign strategy based on your live lead pipeline.")
@@ -2811,12 +3209,7 @@ elif page == "AI Insights":
             st.session_state["ai_rec_result"] = err if err else answer
 
         if st.session_state["ai_rec_result"]:
-            escaped = html.escape(str(st.session_state["ai_rec_result"])).replace("\n","<br>")
-            st.markdown(
-                f'<div class="insight" style="--ac:#fbbf24;padding:20px 22px;">'
-                f'<div style="font-size:11px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🎯 {html.escape(rec_focus)}</div>'
-                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
-                unsafe_allow_html=True)
+            _render_ai_panel(f"🎯 {rec_focus}", st.session_state["ai_rec_result"], accent="#fbbf24")
             st.download_button("⬇️ Export as TXT",
                 data=str(st.session_state["ai_rec_result"]).encode(),
                 file_name=f"recommendation_{rec_focus.lower().replace(' ','_')}.txt",
@@ -2824,7 +3217,6 @@ elif page == "AI Insights":
         else:
             st.markdown('<div class="insight" style="--ac:#fbbf24;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">🎯</div><div style="font-size:13px;color:#9fb0d2">Choose a focus and click <b style="color:#f4f7ff">Generate Recommendations</b>.</div></div>', unsafe_allow_html=True)
 
-    # ── TAB 6 CUSTOM QUESTION ─────────────────────────────
     with tab_custom:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         desc("<b>Custom Question</b> — ask anything specific. Mention a Handle or Post ID for entity-level detail.")
@@ -2847,12 +3239,7 @@ elif page == "AI Insights":
                 st.session_state["ai_custom_matches"] = {"posts":p_matches,"handles":h_matches}
 
         if st.session_state["ai_custom_result"]:
-            escaped = html.escape(str(st.session_state["ai_custom_result"])).replace("\n","<br>")
-            st.markdown(
-                f'<div class="insight" style="--ac:#ec4899;padding:20px 22px;margin-top:12px;">'
-                f'<div style="font-size:11px;font-weight:700;color:#ec4899;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">✨ AI Answer</div>'
-                f'<div style="font-size:13px;color:#c4d0e8;line-height:1.8">{escaped}</div></div>',
-                unsafe_allow_html=True)
+            _render_ai_panel("✨ AI Answer", st.session_state["ai_custom_result"], accent="#ec4899", margin_top=True)
             matches = st.session_state.get("ai_custom_matches",{})
             if matches.get("posts") or matches.get("handles"):
                 with st.expander("Dataset records used", expanded=False):
@@ -2911,20 +3298,20 @@ elif page == "About":
             prioritise outreach — all powered by real CSV data.
           </div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
-          <div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;border-radius:12px;padding:14px 20px;text-align:center;">
-            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;background:linear-gradient(135deg,#a855f7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent">{total_inf:,}</div>
-            <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Influencers</div>
-          </div>
-          <div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;border-radius:12px;padding:14px 20px;text-align:center;">
-            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;background:linear-gradient(135deg,#818cf8,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent">{total_posts:,}</div>
-            <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Posts</div>
-          </div>
-          <div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;border-radius:12px;padding:14px 20px;text-align:center;">
-            <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;background:linear-gradient(135deg,#fbbf24,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent">{cats_count}</div>
-            <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Categories</div>
-          </div>
-        </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
+                    <div style="background:linear-gradient(135deg,#f8fbff,#eef4ff);border:1px solid #dbe6f5;border-radius:12px;padding:14px 20px;text-align:center;">
+                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#6b4fa0">{total_inf:,}</div>
+                        <div style="font-size:10px;color:#231a3b;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Influencers</div>
+                    </div>
+                    <div style="background:linear-gradient(135deg,#f8fbff,#eef4ff);border:1px solid #dbe6f5;border-radius:12px;padding:14px 20px;text-align:center;">
+                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#6b4fa0">{total_posts:,}</div>
+                        <div style="font-size:10px;color:#231a3b;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Posts</div>
+                    </div>
+                    <div style="background:linear-gradient(135deg,#f8fbff,#eef4ff);border:1px solid #dbe6f5;border-radius:12px;padding:14px 20px;text-align:center;">
+                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#6b4fa0">{cats_count}</div>
+                        <div style="font-size:10px;color:#231a3b;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Categories</div>
+                    </div>
+                </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -2939,7 +3326,7 @@ elif page == "About":
           <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div><span><b style="color:#e8d5ff">Lead Intelligence</b> — Followers vs ER scatter, Avg Accounts Following bars, tier stack, ER chart, ranked table</span></div>
           <div class="about-li"><div class="about-li-dot" style="--dot:#c084fc"></div><span><b style="color:#e8d5ff">Post Analytics</b> — Post Inspector (search by ID or Handle) + monthly engagement, quadrant scatter, heatmap, hashtag cloud</span></div>
           <div class="about-li"><div class="about-li-dot" style="--dot:#f87171"></div><span><b style="color:#e8d5ff">Lead Scoring</b> — Pipeline funnel, score histogram with KDE, violin chart, priority outreach export</span></div>
-                    <div class="about-li"><div class="about-li-dot" style="--dot:#fbbf24"></div><span><b style="color:#e8d5ff">AI Insights</b> — Groq-powered Q&A for whole-system insights plus Post ID and Handle lookups</span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#fbbf24"></div><span><b style="color:#e8d5ff">AI Insights</b> — Groq-powered Q&A for whole-system insights plus Post ID and Handle lookups</span></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -2952,6 +3339,7 @@ elif page == "About":
           <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div><span><b style="color:#e8d5ff">Engagement Quality KPI</b> — shown as Positive / Neutral / Negative</span></div>
           <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div><span><b style="color:#e8d5ff">Post Inspector</b> — search any Post ID or Handle with ★ highlight</span></div>
           <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div><span>Priority outreach list with one-click <b style="color:#e8d5ff">CSV export</b></span></div>
+          <div class="about-li"><div class="about-li-dot" style="--dot:#4ade80"></div><span>Auth & sessions backed by <b style="color:#e8d5ff">Supabase</b> — persistent across reboots</span></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -2995,5 +3383,5 @@ st.markdown(
     '<div style="text-align:center;font-size:11px;font-family:\'DM Mono\',monospace;'
     'background:linear-gradient(90deg,#a855f7,#ec4899);'
     '-webkit-background-clip:text;-webkit-text-fill-color:transparent">'
-    'InstaScribe · Creator Intelligence · Streamlit + Plotly + Seaborn</div>',
+    'InstaScribe · Creator Intelligence · Streamlit + Supabase + Plotly</div>',
     unsafe_allow_html=True)

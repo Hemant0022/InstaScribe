@@ -1,4 +1,5 @@
 streamlit
+streamlit-authenticator
 pandas
 numpy
 matplotlib
@@ -6,7 +7,8 @@ scikit-learn
 seaborn
 plotly
 wordcloud
-streamlit-option-menu
-streamlit-authenticator
-PyYAML
+supabase
+python-dotenv
+
 groq
+scipy
