@@ -19,9 +19,10 @@ The app reads CSV files from the `data/` folder:
 - `influencer_master.csv`
 - `post_metrics.csv`
 - `category_dim.csv`
-- `lead_scoring.csv` for reference or export, if needed
+- `lead_scoring.csv`
+- `date_dim.csv` for reference or export, if needed
 
-The authentication data is stored in `auth_store.db` and mirrored to `auth_store.yaml` for bootstrap and backup.
+The authentication data is stored in `Supabase cloud database` and mirrored to `auth_store.yaml` for bootstrap and backup.
 
 ## Requirements
 
@@ -35,7 +36,6 @@ Install the Python dependencies listed in `requirements.txt`:
 - seaborn
 - plotly
 - wordcloud
-- streamlit-authenticator
 - PyYAML
 - groq
 
@@ -57,7 +57,6 @@ streamlit run app.py
 ### Before Pushing to GitHub
 
 - Do not commit real credentials. If `auth_store.yaml` contains production users, keep it out of the repo and provide `auth_store.example.yaml` instead.
-- Keep `auth_store.db` out of the repo — it contains live user records.
 - Keep `.streamlit/secrets.toml` out of the repo.
 - Commit `app.py`, `requirements.txt`, `README.md`, and only the `data/` CSVs that are safe to share.
 
@@ -78,16 +77,18 @@ streamlit run app.py
 ```text
 Project/
 	app.py
-	etc.py
-	auth_store.db
+	auth_supabase.py
 	auth_store.yaml
 	requirements.txt
+	.streamlit/
+		secrets.toml
 	data/
 		category_dim.csv
 		date_dim.csv
 		influencer_master.csv
 		lead_scoring.csv
 		post_metrics.csv
+	.env
 ```
 
 ## What the Dashboard Calculates
