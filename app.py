@@ -261,8 +261,25 @@ def _set_password(username_value, new_password):
 
 
 def _delete_user_record(username_value):
-    _sb().table("users").delete().eq("username", username_value).execute()
-    _refresh_auth_store_cache()
+    try:
+        result = (
+            _sb()
+            .table("users")
+            .delete()
+            .eq("username", username_value)
+            .execute()
+        )
+
+        print("DELETE USER:", username_value)
+        print("DELETE RESULT:", result)
+
+        _refresh_auth_store_cache()
+        return True
+
+    except Exception as e:
+        print("DELETE ERROR:", e)
+        st.error(f"Delete failed: {e}")
+        return False
 
 
 def _find_user_by_identifier(identifier):
@@ -2031,14 +2048,20 @@ if is_admin:
                 placeholder="Type username or email…",
                 key="admin_search"
             )
+        with refresh_col:
+            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+            if st.button("🔄", use_container_width=True, key="admin_refresh_btn"):
+                _refresh_auth_store_cache()
+                st.rerun()
+
         user_rows = []
-        for username_k, record in all_users.items():
+        for username_k, record in auth_store["credentials"]["usernames"].items():
             user_rows.append({
                 "Username": username_k,
                 "Name": record.get("name", ""),
                 "Email": record.get("email", ""),
                 "Role": record.get("role", "member"),
-                "Company": record.get("company", ""),
+                "Company": record.get("details", {}).get("company", "") if isinstance(record.get("details"), dict) else "",
                 "Created At": record.get("created_at", ""),
                 "Password Hash": _mask_hash(record.get("password", "")),
             })
@@ -2047,7 +2070,7 @@ if is_admin:
 
         if search_q.strip():
             q_low = search_q.strip().lower()
-            mask  = (
+            mask = (
                 users_df["Username"].str.lower().str.contains(q_low, na=False) |
                 users_df["Email"].str.lower().str.contains(q_low, na=False)
             )
@@ -2061,7 +2084,7 @@ if is_admin:
             unsafe_allow_html=True
         )
 
-        display_cols = ["Username","Name","Email","Role","Company","Created At","Password Hash"]
+        display_cols = ["Username", "Name", "Email", "Role", "Company", "Created At", "Password Hash"]
         st.dataframe(filtered_df[display_cols], use_container_width=True, hide_index=True)
         st.caption("Passwords are never stored in plain text. Only salted hashes are persisted.")
 
@@ -2078,7 +2101,7 @@ if is_admin:
                 record_m = auth_store["credentials"]["usernames"].get(sel_manage, {})
                 details_m = record_m.get("details", {}) if isinstance(record_m.get("details", {}), dict) else {}
 
-                action_col1, action_col2 = st.columns(2, gap="xxsmall")
+                action_col1, action_col2 = st.columns(2, gap="small")
 
                 with action_col1:
                     st.markdown(
@@ -2086,22 +2109,25 @@ if is_admin:
                         'border:1px solid #2d1555;border-left:3px solid #818cf8;'
                         'border-radius:14px;padding:18px 20px;">'
                         '<div style="font-size:12px;font-weight:700;color:#818cf8;'
-                        'text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">✏️ Edit User</div>',
+                        'text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">✏️ Edit User</div>'
+                        '</div>',
                         unsafe_allow_html=True
                     )
                     with st.form(f"edit_form_{sel_manage}", clear_on_submit=False):
-                        new_name    = st.text_input("Full Name",    value=record_m.get("name",""),             key="ef_name")
-                        new_email   = st.text_input("Email",        value=record_m.get("email",""),            key="ef_email")
-                        new_company = st.text_input("Company",      value=details_m.get("company",""),         key="ef_company")
-                        role_opts   = ["member","admin"]
-                        cur_role    = record_m.get("role","member")
-                        new_role    = st.selectbox("Role", role_opts, index=role_opts.index(cur_role) if cur_role in role_opts else 0, key="ef_role")
+                        new_name    = st.text_input("Full Name",  value=record_m.get("name", ""),       key="ef_name")
+                        new_email   = st.text_input("Email",      value=record_m.get("email", ""),      key="ef_email")
+                        new_company = st.text_input("Company",    value=details_m.get("company", ""),   key="ef_company")
+                        role_opts   = ["member", "admin"]
+                        cur_role    = record_m.get("role", "member")
+                        new_role    = st.selectbox("Role", role_opts,
+                                                   index=role_opts.index(cur_role) if cur_role in role_opts else 0,
+                                                   key="ef_role")
                         save_edit   = st.form_submit_button("💾 Save Changes")
 
                     if save_edit:
                         new_email_val = new_email.strip().lower()
                         conflict = any(
-                            u.get("email","").strip().lower() == new_email_val and uname != sel_manage
+                            u.get("email", "").strip().lower() == new_email_val and uname != sel_manage
                             for uname, u in auth_store["credentials"]["usernames"].items()
                         )
                         if conflict:
@@ -2110,33 +2136,30 @@ if is_admin:
                             updated_details = dict(details_m)
                             updated_details["company"] = new_company.strip()
                             updated_record = dict(record_m)
-                            updated_record["name"] = new_name.strip()
-                            updated_record["email"] = new_email_val
-                            updated_record["role"] = new_role
+                            updated_record["name"]    = new_name.strip()
+                            updated_record["email"]   = new_email_val
+                            updated_record["role"]    = new_role
                             updated_record["details"] = updated_details
                             _save_user_record(sel_manage, updated_record)
                             _set_admin_flash(f"User **{sel_manage}** details changed.")
                             st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
 
                 with action_col2:
                     st.markdown(
-                        '<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);'
-                        'border:1px solid #2d1555;border-left:3px solid #f87171;'
+                        '<div style="background:linear-gradient(135deg,#2e0d0d,#240a0a);'
+                        'border:1px solid #551515;border-left:3px solid #f87171;'
                         'border-radius:14px;padding:18px 20px;">'
                         '<div style="font-size:12px;font-weight:700;color:#f87171;'
-                        'text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">🗑️ Delete User</div>',
+                        'text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">🗑️ Delete User</div>'
+                        f'<div style="font-size:12px;color:#c4a0a0;margin-bottom:12px;">'
+                        f'Permanently remove <b style="color:#ffdddd">{sel_manage}</b>.'
+                        f' This action cannot be undone.</div>'
+                        '</div>',
                         unsafe_allow_html=True
                     )
                     if sel_manage == username:
                         st.warning("⚠️ You cannot delete your own account.")
                     else:
-                        st.markdown(
-                            f'<div style="font-size:12px;color:#9b7ec8;margin-bottom:12px;">'
-                            f'Permanently remove <b style="color:#f4f7ff">{sel_manage}</b>.'
-                            f' This action cannot be undone.</div>',
-                            unsafe_allow_html=True
-                        )
                         if st.session_state.get("confirm_delete") != sel_manage:
                             if st.button("🗑️ Delete User", key="del_btn", use_container_width=True):
                                 st.session_state["confirm_delete"] = sel_manage
@@ -2145,15 +2168,29 @@ if is_admin:
                             st.warning(f"Confirm deletion of **{sel_manage}**?")
                             yes_col, no_col = st.columns(2)
                             if yes_col.button("✅ Yes, Delete", key="del_yes", use_container_width=True):
-                                _delete_user_record(sel_manage)
+
+                                st.write("Trying to delete:", sel_manage)
+
+                                success = _delete_user_record(sel_manage)
+
+                                if success:
+                                    st.success(f"{sel_manage} deleted")
+
+                                    auth_store["credentials"]["usernames"].pop(sel_manage, None)
+
+                                    st.session_state["confirm_delete"] = None
+                                    st.session_state.pop("admin_manage_sel", None)
+
+                                    _set_admin_flash(f"User **{sel_manage}** deleted.")
+                                st.rerun()
+                                auth_store["credentials"]["usernames"].pop(sel_manage, None)
                                 st.session_state["confirm_delete"] = None
+                                st.session_state.pop("admin_manage_sel", None)
                                 _set_admin_flash(f"User **{sel_manage}** deleted.")
                                 st.rerun()
                             if no_col.button("❌ Cancel", key="del_no", use_container_width=True):
                                 st.session_state["confirm_delete"] = None
                                 st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
-
     with tab_add:
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
         st.markdown(
@@ -3327,17 +3364,17 @@ elif page == "About":
           </div>
         </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
-                    <div style="background:linear-gradient(135deg,#f8fbff,#eef4ff);border:1px solid #dbe6f5;border-radius:12px;padding:14px 20px;text-align:center;">
-                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#6b4fa0">{total_inf:,}</div>
-                        <div style="font-size:10px;color:#231a3b;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Influencers</div>
+                    <div style="background:linear-gradient(135deg,#ffffff,#f4f7ff);border:1px solid #dbe6f5;border-left:3px solid #4f7cff;border-radius:12px;padding:14px 20px;text-align:center;box-shadow:0 10px 24px rgba(15,23,42,0.05);">
+                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#2563eb">{total_inf:,}</div>
+                        <div style="font-size:10px;color:#4b5e80;text-transform:uppercase;letter-spacing:.5px;margin-top:3px;font-weight:700">Influencers</div>
                     </div>
-                    <div style="background:linear-gradient(135deg,#f8fbff,#eef4ff);border:1px solid #dbe6f5;border-radius:12px;padding:14px 20px;text-align:center;">
-                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#6b4fa0">{total_posts:,}</div>
-                        <div style="font-size:10px;color:#231a3b;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Posts</div>
+                    <div style="background:linear-gradient(135deg,#ffffff,#f8fafc);border:1px solid #dbe6f5;border-left:3px solid #ec4899;border-radius:12px;padding:14px 20px;text-align:center;box-shadow:0 10px 24px rgba(15,23,42,0.05);">
+                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#db2777">{total_posts:,}</div>
+                        <div style="font-size:10px;color:#4b5e80;text-transform:uppercase;letter-spacing:.5px;margin-top:3px;font-weight:700">Posts</div>
                     </div>
-                    <div style="background:linear-gradient(135deg,#f8fbff,#eef4ff);border:1px solid #dbe6f5;border-radius:12px;padding:14px 20px;text-align:center;">
-                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#6b4fa0">{cats_count}</div>
-                        <div style="font-size:10px;color:#231a3b;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">Categories</div>
+                    <div style="background:linear-gradient(135deg,#ffffff,#f8fafc);border:1px solid #dbe6f5;border-left:3px solid #22c55e;border-radius:12px;padding:14px 20px;text-align:center;box-shadow:0 10px 24px rgba(15,23,42,0.05);">
+                        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#16a34a">{cats_count}</div>
+                        <div style="font-size:10px;color:#4b5e80;text-transform:uppercase;letter-spacing:.5px;margin-top:3px;font-weight:700">Categories</div>
                     </div>
                 </div>
       </div>
@@ -3392,7 +3429,7 @@ elif page == "About":
         <div class="about-card about-card-pink">
           <div class="about-title">🤖 Lead Score Formula</div>
           <hr class="about-divider">
-          <div style="font-family:'DM Mono',monospace;font-size:11.5px;color:#9b7ec8;background:#0e0814;border:1px solid #2d1555;border-radius:8px;padding:14px 16px;line-height:2;">
+          <div style="font-family:'DM Mono',monospace;font-size:11.5px;color:#9b7ec8;background:#FFFFFF;border:0px solid #2d1555;border-radius:8px;padding:14px 16px;line-height:2;">
             <span style="color:#3d1f70"># Weighted raw score</span><br>
             ER_score   = Engagement_Rate × <span style="color:#818cf8">0.40</span><br>
             Fol_score  = clip(Followers, 2M) / 2M × <span style="color:#4ade80">30</span><br>
