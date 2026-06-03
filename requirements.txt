@@ -9,6 +9,6 @@ plotly
 wordcloud
 supabase
 python-dotenv
-
+streamlit_options_menu
 groq
 scipy

@@ -1690,26 +1690,41 @@ div[data-testid="stButton"] > button:hover,
 
     with hero_col:
         st.markdown(
-    """
+        """
 <div class="login-hero-orb one"></div>
 <div class="login-hero-orb two"></div>
 <div style="padding: 10px 8px;">
     <div style="font-size: 12px; font-weight: 800; letter-spacing: .34em;
-                text-transform: uppercase; color: #E81CD9; margin-bottom: 16px;">
+                text-transform: uppercase; margin-bottom: 16px;
+                background: linear-gradient(90deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+                -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                background-clip: text; width: fit-content;">
         WELCOME TO
     </div>
     <h1 style="font-size: clamp(2.5rem, 5.5vw, 4.5rem); font-weight: 600;
                line-height: 1.08; letter-spacing: -0.03em; margin: 0;
-               font-family: Optima, sans-serif;">
-        <span style="color: #ED5B40;">Insta</span><span style="color: #EBB244;">Scribe</span><br/>
-        <span style="color: #4F92E8;">AI </span><span style="color: #4F92E8;">Creator</span><br/>
-        <span style="color: #A565EB;">Intelligence</span><br/>
-        <span style="color: #ED6BB8;">Platform</span>
+               font-family: Optima, sans-serif;
+               background: linear-gradient(135deg,
+                   #f09433 0%,
+                   #e6683c 15%,
+                   #dc2743 30%,
+                   #7C48F0 80%,
+                   #bc1888 70%,
+                   #833ab4 85%,
+                   #5851db 100%);
+               -webkit-background-clip: text;
+               -webkit-text-fill-color: transparent;
+               background-clip: text;
+               display: block;">
+        InstaScribe<br/>
+        AI Creator<br/>
+        Intelligence<br/>
+        Platform
     </h1>
 </div>
 """,
-    unsafe_allow_html=True,
-)
+        unsafe_allow_html=True,
+    )
 
     with form_col:
         subtitle_text = "Use your username or email to sign in" if login_mode == "User" else "Admin credentials required"
