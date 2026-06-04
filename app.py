@@ -282,6 +282,470 @@ def _delete_user_record(username_value):
         return False
 
 
+# ══════════════════════════════════════════════════════════════════
+# SUBSCRIPTION CONSTANTS
+# ══════════════════════════════════════════════════════════════════
+
+PLANS = {
+    "free": {
+        "label":       "Free",
+        "monthly_usd": 0.00,
+        "yearly_usd":  0.00,
+        "color":       "#818cf8",
+        "color2":      "#6366f1",
+        "icon":        "🌱",
+        "features": [
+            "Executive Overview dashboard",
+            "Up to 50 influencer records",
+            "Basic lead scoring",
+            "Community support",
+        ],
+        "limits": "50 records · no AI",
+    },
+    "pro": {
+        "label":       "Pro",
+        "monthly_usd": 29.00,
+        "yearly_usd":  290.00,
+        "color":       "#a855f7",
+        "color2":      "#ec4899",
+        "icon":        "⚡",
+        "features": [
+            "All Free features",
+            "Unlimited influencer records",
+            "AI Insights (Groq-powered)",
+            "Post Analytics & Inspector",
+            "Lead Intelligence deep-dive",
+            "Priority email support",
+        ],
+        "limits": "Unlimited · AI included",
+    },
+    "business": {
+        "label":       "Business",
+        "monthly_usd": 79.00,
+        "yearly_usd":  790.00,
+        "color":       "#f59e0b",
+        "color2":      "#ef4444",
+        "icon":        "🏢",
+        "features": [
+            "Everything in Pro",
+            "Admin console access",
+            "Team seat management",
+            "Custom CSV uploads",
+            "Dedicated Slack support",
+            "SLA guarantee",
+        ],
+        "limits": "Team · SLA · Dedicated",
+    },
+}
+
+# ══════════════════════════════════════════════════════════════════
+# SUBSCRIPTION DB HELPERS
+# ══════════════════════════════════════════════════════════════════
+
+def _get_subscription(username_val):
+    """Return the latest active subscription row for a user, or None."""
+    try:
+        res = (
+            _sb().table("subscriptions")
+            .select("*")
+            .eq("username", username_val)
+            .eq("status", "active")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        return rows[0] if rows else None
+    except Exception:
+        return None
+
+
+def _get_all_subscriptions():
+    """Return all subscription rows (all users, all statuses)."""
+    try:
+        res = (
+            _sb().table("subscriptions")
+            .select("*")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return res.data or []
+    except Exception:
+        return []
+
+
+def _create_subscription(username_val, plan, billing_cycle):
+    """Insert a new active subscription, cancel any existing one first."""
+    # Cancel existing active subs
+    try:
+        _sb().table("subscriptions").update({
+            "status": "cancelled",
+            "cancelled_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("username", username_val).eq("status", "active").execute()
+    except Exception:
+        pass
+
+    plan_info = PLANS.get(plan, PLANS["free"])
+    amount    = plan_info["yearly_usd"] if billing_cycle == "yearly" else plan_info["monthly_usd"]
+    now       = datetime.now(timezone.utc)
+    renews_at = (now + timedelta(days=365) if billing_cycle == "yearly"
+                 else now + timedelta(days=30))
+    import uuid as _uuid
+    payment_ref = "PAY-" + _uuid.uuid4().hex[:12].upper()
+
+    try:
+        _sb().table("subscriptions").insert({
+            "username":      username_val,
+            "plan":          plan,
+            "status":        "active",
+            "billing_cycle": billing_cycle,
+            "amount_usd":    float(amount),
+            "started_at":    now.isoformat(),
+            "renews_at":     renews_at.isoformat(),
+            "payment_ref":   payment_ref,
+            "created_at":    now.isoformat(),
+        }).execute()
+        return True, payment_ref
+    except Exception as e:
+        return False, str(e)
+
+
+def _cancel_subscription(username_val):
+    """Cancel the active subscription for a user."""
+    try:
+        _sb().table("subscriptions").update({
+            "status":       "cancelled",
+            "cancelled_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("username", username_val).eq("status", "active").execute()
+        return True
+    except Exception:
+        return False
+
+
+# ══════════════════════════════════════════════════════════════════
+# SUBSCRIPTION PAGE (shown to non-admin users)
+# ══════════════════════════════════════════════════════════════════
+
+def render_subscription_page():
+    current_sub = _get_subscription(username)
+    current_plan = current_sub["plan"] if current_sub else "free"
+
+    st.markdown(
+        '<div class="ai-page-heading">Subscription Plans</div>'
+        '<div class="ai-page-subheading">Choose the plan that fits your team. '
+        'Upgrade or downgrade at any time.</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Flash messages ──────────────────────────────────────────
+    sub_flash = st.session_state.pop("sub_flash", None)
+    if sub_flash:
+        if sub_flash["kind"] == "success":
+            st.success(sub_flash["msg"])
+        else:
+            st.error(sub_flash["msg"])
+
+    # ── Current plan banner ─────────────────────────────────────
+    plan_info = PLANS.get(current_plan, PLANS["free"])
+    renews_str = ""
+    if current_sub and current_sub.get("renews_at"):
+        try:
+            rdt = datetime.fromisoformat(current_sub["renews_at"].replace("Z", "+00:00"))
+            renews_str = f" · renews {rdt.strftime('%d %b %Y')}"
+        except Exception:
+            pass
+
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg,{plan_info["color"]}18,{plan_info["color2"]}0f);'
+        f'border:1px solid {plan_info["color"]}44;border-radius:16px;padding:16px 22px;'
+        f'margin-bottom:24px;display:flex;align-items:center;gap:12px;">'
+        f'<span style="font-size:24px">{plan_info["icon"]}</span>'
+        f'<div>'
+        f'<div style="font-size:14px;font-weight:700;color:#1e293b">Current Plan: '
+        f'<span style="color:{plan_info["color"]}">{plan_info["label"]}</span></div>'
+        f'<div style="font-size:11px;color:#64748b">{plan_info["limits"]}{renews_str}</div>'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Billing toggle ──────────────────────────────────────────
+    billing = st.radio(
+        "Billing cycle",
+        ["Monthly", "Yearly (save ~17%)"],
+        horizontal=True,
+        key="sub_billing_toggle",
+    )
+    billing_cycle = "yearly" if "Yearly" in billing else "monthly"
+
+    # ── Plan cards ──────────────────────────────────────────────
+    cols = st.columns(3, gap="large")
+    for i, (plan_key, plan_data) in enumerate(PLANS.items()):
+        with cols[i]:
+            price_usd = plan_data["yearly_usd"] if billing_cycle == "yearly" else plan_data["monthly_usd"]
+            price_str = "Free" if price_usd == 0 else f"${price_usd:.0f}/{billing_cycle[:2]}"
+            is_current = plan_key == current_plan
+            border_style = f"3px solid {plan_data['color']}" if is_current else f"1px solid {plan_data['color']}44"
+
+            features_html = "".join(
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+                f'<span style="color:{plan_data["color"]};font-size:13px">✓</span>'
+                f'<span style="font-size:12px;color:#475569">{feat}</span></div>'
+                for feat in plan_data["features"]
+            )
+            badge = (
+                f'<span style="background:{plan_data["color"]}22;color:{plan_data["color"]};'
+                f'font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;'
+                f'border:1px solid {plan_data["color"]}44;margin-left:8px;">CURRENT</span>'
+                if is_current else ""
+            )
+
+            st.markdown(
+                f'<div style="background:#ffffff;'
+                f'border:{border_style};border-radius:18px;padding:24px 22px;'
+                f'position:relative;overflow:hidden;min-height:360px;">'
+                f'<div style="position:absolute;top:0;left:0;right:0;height:3px;'
+                f'background:linear-gradient(90deg,{plan_data["color"]},{plan_data["color2"]})" ></div>'
+                f'<div style="font-size:22px;margin-bottom:6px">{plan_data["icon"]}</div>'
+                f'<div style="font-size:16px;font-weight:700;color:#1e293b">'
+                f'{plan_data["label"]}{badge}</div>'
+                f'<div style="font-family:\'DM Mono\',monospace;font-size:26px;font-weight:700;'
+                f'background:linear-gradient(135deg,{plan_data["color"]},{plan_data["color2"]});'
+                f'-webkit-background-clip:text;-webkit-text-fill-color:transparent;'
+                f'margin:10px 0 16px;">{price_str}</div>'
+                f'{features_html}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            if is_current:
+                if plan_key != "free":
+                    if st.button("Cancel Plan", key=f"cancel_{plan_key}", use_container_width=True):
+                        if _cancel_subscription(username):
+                            st.session_state["sub_flash"] = {
+                                "kind": "success",
+                                "msg": f"Your {plan_data['label']} plan has been cancelled.",
+                            }
+                        else:
+                            st.session_state["sub_flash"] = {
+                                "kind": "error",
+                                "msg": "Cancellation failed. Please try again.",
+                            }
+                        st.rerun()
+                else:
+                    st.button("Current Plan", key=f"cur_{plan_key}", disabled=True, use_container_width=True)
+            else:
+                label = f"Upgrade to {plan_data['label']}" if plan_key != "free" else "Downgrade to Free"
+                if st.button(label, key=f"buy_{plan_key}", use_container_width=True):
+                    ok, ref = _create_subscription(username, plan_key, billing_cycle)
+                    if ok:
+                        st.session_state["sub_flash"] = {
+                            "kind": "success",
+                            "msg": (
+                                f"🎉 Successfully subscribed to **{plan_data['label']}** "
+                                f"({billing_cycle}) — Ref: `{ref}`"
+                                if plan_key != "free"
+                                else "Downgraded to Free plan."
+                            ),
+                        }
+                    else:
+                        st.session_state["sub_flash"] = {"kind": "error", "msg": f"Error: {ref}"}
+                    st.rerun()
+
+    # ── FAQ ─────────────────────────────────────────────────────
+    st.markdown("<div style='margin-top:32px'></div>", unsafe_allow_html=True)
+    sec("💬 Frequently Asked Questions")
+    faq_cols = st.columns(2)
+    faqs = [
+        ("Can I switch plans?", "Yes — upgrade or downgrade any time. Changes take effect immediately."),
+        ("Is there a free trial?", "The Free plan is permanently free with no credit card required."),
+        ("How are yearly savings calculated?", "Yearly billing gives ~2 months free compared to paying monthly."),
+        ("What payment methods are accepted?", "This is a demo — payments are simulated with a mock reference."),
+    ]
+    for i, (q, a) in enumerate(faqs):
+        with faq_cols[i % 2]:
+            st.markdown(
+                f'<div class="insight" style="--ac:#818cf8;margin-bottom:12px;">'
+                f'<b>{q}</b><br><span style="font-size:12px">{a}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+
+# ══════════════════════════════════════════════════════════════════
+# ADMIN REVENUE DASHBOARD (tab inside admin view)
+# ══════════════════════════════════════════════════════════════════
+
+def render_admin_revenue_tab():
+    all_subs = _get_all_subscriptions()
+
+    if not all_subs:
+        st.info("No subscription records yet. Users need to purchase a plan first.")
+        return
+
+    subs_df = pd.DataFrame(all_subs)
+    subs_df["created_at"] = pd.to_datetime(subs_df["created_at"], utc=True, errors="coerce")
+    subs_df["started_at"] = pd.to_datetime(subs_df["started_at"], utc=True, errors="coerce")
+    subs_df["Month"]      = subs_df["created_at"].dt.to_period("M").dt.to_timestamp()
+    subs_df["amount_usd"] = pd.to_numeric(subs_df["amount_usd"], errors="coerce").fillna(0)
+
+    active_df = subs_df[subs_df["status"] == "active"]
+
+    # ── KPIs ────────────────────────────────────────────────────
+    total_rev   = subs_df[subs_df["status"] != "free"]["amount_usd"].sum()
+    mrr         = active_df[active_df["billing_cycle"] == "monthly"]["amount_usd"].sum()
+    arr         = active_df[active_df["billing_cycle"] == "yearly"]["amount_usd"].sum() / 12
+    mrr_total   = mrr + arr
+    paying_subs = len(active_df[active_df["plan"] != "free"])
+    churn_count = len(subs_df[subs_df["status"] == "cancelled"])
+
+    k1, k2, k3, k4 = st.columns(4, gap="large")
+    k1.markdown(kpi("Total Revenue",    f"${total_rev:,.0f}",   "all-time · all plans",      "#4ade80","#22c55e",min(int(total_rev/100),100)), unsafe_allow_html=True)
+    k2.markdown(kpi("MRR",              f"${mrr_total:,.0f}",   "monthly recurring revenue", "#818cf8","#6366f1",70), unsafe_allow_html=True)
+    k3.markdown(kpi("Paying Subs",      str(paying_subs),       "active paid plans",         "#a855f7","#ec4899",min(paying_subs*20,100)), unsafe_allow_html=True)
+    k4.markdown(kpi("Churned",          str(churn_count),       "cancelled subscriptions",   "#f87171","#ef4444",min(churn_count*15,100)), unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+
+    # ── Chart row 1 ─────────────────────────────────────────────
+    rc1, rc2 = st.columns([3, 2], gap="large")
+
+    with rc1:
+        sec("📈 Monthly Revenue (MRR trend)")
+        monthly_rev = (
+            subs_df[subs_df["amount_usd"] > 0]
+            .groupby("Month")["amount_usd"]
+            .sum()
+            .reset_index()
+            .sort_values("Month")
+        )
+        if len(monthly_rev) > 0:
+            fig_rev = go.Figure()
+            fig_rev.add_trace(go.Bar(
+                x=monthly_rev["Month"], y=monthly_rev["amount_usd"],
+                marker_color="#a855f7", marker_line_width=0, opacity=0.85,
+                name="Revenue",
+                text=monthly_rev["amount_usd"].apply(lambda v: f"${v:,.0f}"),
+                textposition="outside", textfont=dict(color="#d8b4fe", size=11),
+            ))
+            fig_rev.add_trace(go.Scatter(
+                x=monthly_rev["Month"], y=monthly_rev["amount_usd"],
+                mode="lines", line=dict(color="#ec4899", width=2), showlegend=False,
+            ))
+            dark(fig_rev, 280)
+            fig_rev.update_layout(
+                title=dict(text="Revenue by Month", font=dict(size=12, color="#6b4fa0")),
+                bargap=0.30, yaxis_title="USD",
+            )
+            st.plotly_chart(fig_rev, use_container_width=True)
+        else:
+            st.info("No revenue data yet (only Free subscriptions recorded).")
+
+    with rc2:
+        sec("🥧 Plan Distribution")
+        plan_counts = active_df["plan"].value_counts().reset_index()
+        plan_counts.columns = ["Plan", "Count"]
+        plan_colors_map = {"free": "#818cf8", "pro": "#a855f7", "business": "#f59e0b"}
+        plan_counts["Color"] = plan_counts["Plan"].map(plan_colors_map)
+
+        fig_pie = go.Figure(go.Pie(
+            labels=plan_counts["Plan"].str.title(),
+            values=plan_counts["Count"],
+            hole=0.58,
+            marker=dict(
+                colors=plan_counts["Color"].tolist(),
+                line=dict(color="#0e0814", width=2),
+            ),
+            textinfo="percent+label",
+            textfont=dict(size=11, color="#f0eaf6"),
+            hovertemplate="<b>%{label}</b>: %{value} users<extra></extra>",
+        ))
+        dark(fig_pie, 280)
+        fig_pie.update_layout(
+            title=dict(text="Active Plan Distribution", font=dict(size=12, color="#6b4fa0")),
+            legend=dict(orientation="h", y=-0.18, font=dict(size=10)),
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    # ── Chart row 2 ─────────────────────────────────────────────
+    rc3, rc4 = st.columns(2, gap="large")
+
+    with rc3:
+        sec("💳 Billing Cycle Split")
+        cycle_counts = active_df[active_df["plan"] != "free"]["billing_cycle"].value_counts().reset_index()
+        cycle_counts.columns = ["Cycle", "Count"]
+        if len(cycle_counts) > 0:
+            fig_cycle = go.Figure(go.Bar(
+                x=cycle_counts["Cycle"].str.title(),
+                y=cycle_counts["Count"],
+                marker_color=["#4ade80", "#fbbf24"],
+                marker_line_width=0, opacity=0.88,
+                text=cycle_counts["Count"], textposition="outside",
+                textfont=dict(color="#ffffff", size=12),
+            ))
+            dark(fig_cycle, 240)
+            fig_cycle.update_layout(
+                title=dict(text="Monthly vs Yearly Subscriptions", font=dict(size=12, color="#6b4fa0")),
+                bargap=0.4, showlegend=False,
+            )
+            st.plotly_chart(fig_cycle, use_container_width=True)
+        else:
+            st.info("No paid billing cycle data yet.")
+
+    with rc4:
+        sec("📊 Revenue by Plan")
+        plan_rev = (
+            subs_df[subs_df["amount_usd"] > 0]
+            .groupby("plan")["amount_usd"]
+            .sum()
+            .reset_index()
+            .sort_values("amount_usd", ascending=False)
+        )
+        if len(plan_rev) > 0:
+            plan_rev["Color"] = plan_rev["plan"].map(plan_colors_map)
+            fig_planrev = go.Figure()
+            for _, row_pr in plan_rev.iterrows():
+                fig_planrev.add_trace(go.Bar(
+                    x=[row_pr["plan"].title()],
+                    y=[row_pr["amount_usd"]],
+                    marker_color=row_pr["Color"],
+                    marker_line_width=0, opacity=0.88,
+                    text=[f"${row_pr['amount_usd']:,.0f}"],
+                    textposition="outside",
+                    textfont=dict(color="#ffffff", size=11),
+                    name=row_pr["plan"].title(),
+                ))
+            dark(fig_planrev, 240)
+            fig_planrev.update_layout(
+                title=dict(text="All-Time Revenue by Plan", font=dict(size=12, color="#6b4fa0")),
+                showlegend=False, bargap=0.35,
+            )
+            st.plotly_chart(fig_planrev, use_container_width=True)
+        else:
+            st.info("No revenue data yet.")
+
+    # ── Subscriber table ─────────────────────────────────────────
+    sec("📋 All Subscriptions")
+    display_subs = subs_df.copy()
+    display_subs["created_at"] = display_subs["created_at"].dt.strftime("%Y-%m-%d %H:%M")
+    display_subs["started_at"] = display_subs["started_at"].dt.strftime("%Y-%m-%d")
+    show_sub_cols = [c for c in ["username", "plan", "status", "billing_cycle",
+                                  "amount_usd", "started_at", "created_at", "payment_ref"]
+                     if c in display_subs.columns]
+    display_subs = display_subs[show_sub_cols].rename(columns={
+        "username": "User", "plan": "Plan", "status": "Status",
+        "billing_cycle": "Cycle", "amount_usd": "Amount (USD)",
+        "started_at": "Started", "created_at": "Created At",
+        "payment_ref": "Payment Ref",
+    })
+    st.dataframe(display_subs.reset_index(drop=True), use_container_width=True, height=320)
+    st.download_button(
+        "⬇️ Export Revenue CSV",
+        display_subs.to_csv(index=False).encode(),
+        "instascribe_revenue.csv",
+        "text/csv",
+        key="rev_export_btn",
+    )
+
+
 def _find_user_by_identifier(identifier):
     lookup = (identifier or "").strip().lower()
     if not lookup:
@@ -451,23 +915,23 @@ html, body, [class*="css"] {
 }
 
 .stApp {
-    background: radial-gradient(circle at top left, rgba(70,104,255,0.10), transparent 28%),
-                radial-gradient(circle at bottom right, rgba(124,58,237,0.08), transparent 24%),
-                linear-gradient(180deg, #060913 0%, #0b1020 100%);
+    background: radial-gradient(circle at top left, rgba(244, 63, 94, 0.12), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(249, 115, 22, 0.08), transparent 24%),
+                linear-gradient(180deg, #0f051d 0%, #18072b 100%);
     min-height: 100vh;
 }
 .stApp::before {
     content: '';
     position: fixed; top: -120px; right: -120px;
     width: 500px; height: 500px; border-radius: 50%; pointer-events: none;
-    background: radial-gradient(circle, rgba(79,124,255,0.10) 0%, transparent 65%);
+    background: radial-gradient(circle, rgba(244, 63, 94, 0.12) 0%, transparent 65%);
     z-index: 0;
 }
 .stApp::after {
     content: '';
     position: fixed; bottom: -100px; left: -100px;
     width: 420px; height: 420px; border-radius: 50%; pointer-events: none;
-    background: radial-gradient(circle, rgba(124,58,237,0.08) 0%, transparent 65%);
+    background: radial-gradient(circle, rgba(249, 115, 22, 0.08) 0%, transparent 65%);
     z-index: 0;
 }
 
@@ -743,19 +1207,31 @@ st.markdown(
 <style>
 .stApp {
     background:
-        radial-gradient(circle at 10% 10%, rgba(255,77,171,0.10), transparent 22%),
-        radial-gradient(circle at 90% 12%, rgba(79,124,255,0.10), transparent 24%),
-        radial-gradient(circle at 72% 88%, rgba(255,206,90,0.10), transparent 20%),
-        linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%) !important;
+        /* Soft ellipses for texture (mimicking the SVG shapes) */
+        radial-gradient(ellipse at 15% 20%, rgba(165, 180, 252, 0.13) 0%, transparent 40%),
+        radial-gradient(ellipse at 85% 80%, rgba(249, 168, 212, 0.15) 0%, transparent 40%),
+        /* Primary Aurora radial glows */
+        radial-gradient(circle at 20% 30%, rgba(199, 210, 254, 0.7) 0%, transparent 55%),
+        radial-gradient(circle at 80% 70%, rgba(251, 207, 232, 0.75) 0%, transparent 50%),
+        radial-gradient(circle at 60% 20%, rgba(191, 219, 254, 0.55) 0%, transparent 40%),
+        /* Base linear gradient (indigo to blush) */
+        linear-gradient(135deg, #f8f4ff 0%, #dbeafe 40%, #fce7f3 100%) !important;
+    background-attachment: fixed !important;
 }
 
 .block-container { color: #162945 !important; }
 
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%) !important;
-    border-right: 1px solid #dbe6f5 !important;
+    /* Soft, semi-transparent gradient blending indigo to blush */
+    background: linear-gradient(180deg, rgba(248, 244, 255, 0.75) 0%, rgba(252, 231, 243, 0.75) 100%) !important;
+    
+    /* Frosted glass blur effect */
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    
+    /* Subtle white border to separate it cleanly from the main app */
+    border-right: 1px solid rgba(255, 255, 255, 0.6) !important;
 }
-
 [data-testid="stSidebar"] * { color: #000000 !important; }
 
 .app-header-card,
@@ -1007,13 +1483,29 @@ CAT_CLR = {"tech":"#818cf8","fashion":"#ec4899","fitness":"#4ade80",
            "travel":"#c084fc","food":"#fbbf24"}
 Q_CLR   = {"high":"#4ade80","medium":"#fbbf24","low":"#f87171"}
 
+# DL = dict(
+#     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+#     font=dict(family="DM Sans", color="#5f6f8d", size=12),
+#     xaxis=dict(gridcolor="#dde6f4", linecolor="#d559f1", zeroline=False),
+#     yaxis=dict(gridcolor="#dde6f4", linecolor="#d559f1", zeroline=False),
+#     legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#0a0c0f", font=dict(size=11)),
+#     margin=dict(l=24, r=24, t=40, b=24))
 DL = dict(
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="DM Sans", color="#5f6f8d", size=12),
-    xaxis=dict(gridcolor="#dde6f4", linecolor="#dbe6f5", zeroline=False),
-    yaxis=dict(gridcolor="#dde6f4", linecolor="#dbe6f5", zeroline=False),
-    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#dbe6f5", font=dict(size=11)),
-    margin=dict(l=24, r=24, t=40, b=24))
+    paper_bgcolor="rgba(0,0,0,0)", 
+    plot_bgcolor="rgba(0,0,0,0)",
+    # 1. Change the main global font color to solid black
+    font=dict(family="Cantarell", color="#000000", size=12),
+    
+    # 2. Force the X and Y axis numbers to inherit that black color explicitly
+    xaxis=dict(gridcolor="#dde6f4", linecolor="#1e1c1e", zeroline=False, tickfont=dict(color="#000000")),
+    yaxis=dict(gridcolor="#dde6f4", linecolor="#1e1e1f", zeroline=False, tickfont=dict(color="#000000")),
+    
+    # 3. Ensure the legend text is black
+    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#0a0c0f", font=dict(size=11, color="#000000")),
+    
+    margin=dict(l=24, r=24, t=40, b=24)
+)
+
 
 def dark(fig, h=300):
     fig.update_layout(**DL, height=h)
@@ -1683,7 +2175,7 @@ div[data-testid="stButton"] > button:hover,
         unsafe_allow_html=True,
     )
 
-    login_mode = st.radio("", ["User", "Admin"], horizontal=True, key="login_mode", label_visibility="collapsed")
+    login_mode = st.radio(" ", options=["User", "Admin"], horizontal=True, key="login_mode", label_visibility="collapsed")
     page_mode = st.session_state.get("page_mode", "Login")
     st.markdown('<div id="login-architecture"></div>', unsafe_allow_html=True)
     hero_col, form_col = st.columns([1.28, 0.72], gap="large")
@@ -2051,7 +2543,9 @@ if is_admin:
 
     st.markdown("<div style='margin-top:6px'></div>", unsafe_allow_html=True)
 
-    tab_users, tab_add, tab_sessions = st.tabs(["👥  User Store", "➕  Add User", "🖥️  Active Sessions"])
+    tab_users, tab_sessions, tab_revenue = st.tabs([
+        "👥  User Store", "🖥️  Active Sessions", "💰  Revenue"
+    ])
 
     with tab_users:
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
@@ -2206,56 +2700,6 @@ if is_admin:
                             if no_col.button("❌ Cancel", key="del_no", use_container_width=True):
                                 st.session_state["confirm_delete"] = None
                                 st.rerun()
-    with tab_add:
-        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);'
-            'border:1px solid #2d1555;border-left:3px solid #4ade80;'
-            'border-radius:14px;padding:22px 24px;max-width:640px;">'
-            '<div style="font-size:12px;font-weight:700;color:#4ade80;'
-            'text-transform:uppercase;letter-spacing:.07em;margin-bottom:18px">➕ Create New User</div>',
-            unsafe_allow_html=True
-        )
-        with st.form("admin_add_user", clear_on_submit=True):
-            a1, a2 = st.columns(2)
-            add_fullname = a1.text_input("Full Name *")
-            add_company  = a2.text_input("Company / Org")
-            add_email    = st.text_input("Email *")
-            add_username = st.text_input("Username *")
-            b1, b2 = st.columns(2)
-            add_pw   = b1.text_input("Password *", type="password",
-                                     help="Min 8 chars · upper · lower · digit")
-            add_conf = b2.text_input("Confirm Password *", type="password")
-            add_role = st.selectbox("Role", ["member","admin"])
-            add_submitted = st.form_submit_button("✅ Create Account")
-
-        if add_submitted:
-            uval  = add_username.strip().lower()
-            email_val = add_email.strip().lower()
-            if not all([add_fullname.strip(), email_val, uval, add_pw, add_conf]):
-                st.error("All fields marked * are required.")
-            elif add_pw != add_conf:
-                st.error("Passwords do not match.")
-            elif not _is_strong_password(add_pw):
-                st.error("Password needs 8+ chars, upper, lower, and a digit.")
-            elif uval in auth_store["credentials"]["usernames"]:
-                st.error("Username already taken.")
-            elif any(u.get("email","").strip().lower() == email_val for u in auth_store["credentials"]["usernames"].values()):
-                st.error("Email already registered.")
-            else:
-                _save_user_record(uval, {
-                    "name":       add_fullname.strip(),
-                    "email":      email_val,
-                    "password":   _hash_password(add_pw),
-                    "role":       add_role,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "details":    {"company": add_company.strip()},
-                })
-                _set_admin_flash(f"User **{uval}** created with role **{add_role}**.")
-                st.rerun()
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
     with tab_sessions:
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
@@ -2286,6 +2730,10 @@ if is_admin:
 
         if st.button("🔄 Refresh Sessions", use_container_width=False):
             _refresh_admin_view("sessions")
+
+    with tab_revenue:
+        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+        render_admin_revenue_tab()
 
     st.stop()
 
@@ -2415,8 +2863,8 @@ st.markdown(
     unsafe_allow_html=True)
 
 # ── NAV ────────────────────────────────────────────────────────
-nav_pages = ["Executive Overview","Lead Intelligence","Post Analytics","Lead Scoring","AI Insights","About"]
-nav_icons = ["bar-chart-fill","people-fill","chat-dots-fill","robot","stars","info-circle-fill"]
+nav_pages = ["Executive Overview","Lead Intelligence","Post Analytics","Lead Scoring","AI Insights","Subscription","About"]
+nav_icons = ["bar-chart-fill","people-fill","chat-dots-fill","robot","stars","credit-card-fill","info-circle-fill"]
 
 page = option_menu(None,
     nav_pages,
@@ -2499,8 +2947,8 @@ if page == "Executive Overview":
         fig = go.Figure(go.Scatter(
             x=monthly["Month"], y=monthly["Engagement"],
             mode="lines+markers",
-            line=dict(color="#a855f7", width=2.5),
-            marker=dict(size=5, color="#ec4899"),
+            line=dict(color="#423dec", width=2.5),
+            marker=dict(size=5, color="#210915"),
             fill="tozeroy", fillcolor="rgba(168,85,247,0.07)"))
         dark(fig, 300)
         fig.update_layout(title=dict(text="Monthly Engagement Trend", font=dict(size=12,color="#6b4fa0")))
@@ -2518,7 +2966,7 @@ if page == "Executive Overview":
             labels=qc["Quality"].str.title(), values=qc["Count"], hole=0.62,
             marker=dict(colors=[Q_CLR.get(q,"#888") for q in qc["Quality"]], line=dict(color="#0e0814",width=2)),
             text=qc["Pct"].map(lambda p: f"{p:.1f}%"), textinfo="text", textposition="inside",
-            textfont=dict(size=10, color="#f0eaf6"),
+            textfont=dict(size=10, color="#141414"),
             hovertemplate="<b>%{label}</b><extra></extra>",
             direction="clockwise", sort=False))
         dark(fig2, 300)
@@ -2549,7 +2997,7 @@ if page == "Executive Overview":
                         opacity=0.92,
                         text=[fmt(int(r["Engagement"]))],
                         textposition="outside",
-                        textfont=dict(color="#ffffff", size=11),
+                        textfont=dict(color="#0d0c0c", size=11),
                         name=r["Category_Name"],
                     ))
                 dark(fig_a, 280)
@@ -2569,7 +3017,7 @@ if page == "Executive Overview":
                         opacity=0.92,
                         text=[fmt(int(r["Follower_Count"]))],
                         textposition="outside",
-                        textfont=dict(color="#ffffff", size=11),
+                        textfont=dict(color="#080707", size=11),
                         name=r["Category_Name"],
                     ))
                 dark(fig_b, 280)
@@ -2584,7 +3032,7 @@ elif page == "Lead Intelligence":
     hq     = (leads["Lead_Quality"]=="high").sum()
     hi_er  = (leads["Engagement_Rate"] > 15).sum()
 
-    st.markdown(f'<p style="color:#6b4fa0;font-size:15px;margin-bottom:1rem">Influencer quality signals, authenticity analysis, and profile ranking · <b style="color:#d8b4fe">{total:,} records in view</b></p>', unsafe_allow_html=True)
+    st.markdown(f'<p style="color:#7036E0;font-size:15px;margin-bottom:1rem">Influencer quality signals, authenticity analysis, and profile ranking · <b style="color:#A127E8">{total:,} records in view</b></p>', unsafe_allow_html=True)
 
     avg_following = leads["Following_Count"].mean() if "Following_Count" in leads.columns else 0
     avg_following = 0 if (avg_following is None or (isinstance(avg_following, float) and np.isnan(avg_following))) else avg_following
@@ -2620,11 +3068,11 @@ elif page == "Lead Intelligence":
         if "Category_Name" in leads.columns and "Following_Count" in leads.columns:
             fc_cat = leads.groupby("Category_Name")["Following_Count"].mean().sort_values()
             max_fc = fc_cat.max() if fc_cat.max() > 0 else 1
-            html_str = '<div style="background:linear-gradient(135deg,#1a0d2e,#150a24);border:1px solid #2d1555;border-radius:14px;padding:18px 20px">'
+            html_str = '<div style="background:rgba(255,255,255,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255, 0.5);border-radius:14px;padding:18px 20px;color:#000000">'
             for cat, val in fc_cat.items():
                 color = CAT_CLR.get(str(cat).lower(), "#a855f7")
                 html_str += pb(str(cat).title(), f"{round(val):,}", val / max_fc * 100, color)
-            html_str += '<div style="font-size:10.5px;color:#6b4fa0;margin-top:10px">Lower number = fewer accounts followed = organic creator</div></div>'
+            html_str += '<div style="font-size:10.5px;color:#7036E0;margin-top:10px">Lower number = fewer accounts followed = organic creator</div></div>'
             st.markdown(html_str, unsafe_allow_html=True)
 
     sec("Follower Tier Distribution & Engagement Rate by Category")
@@ -2643,7 +3091,7 @@ elif page == "Lead Intelligence":
                 category_orders={"Follower_Tier":tier_order},
                 color_discrete_sequence=["#2563eb", "#db2777", "#eab308", "#3b82f6", "#be185d"],
             )
-            fig3.update_traces(marker_line_width=0, opacity=0.92, textfont=dict(color="#ffffff"), hovertemplate=None)
+            fig3.update_traces(marker_line_width=1, opacity=1, textfont=dict(color="#050404"), hovertemplate=None)
             dark(fig3, 290)
             fig3.update_layout(title=dict(text="Follower Tier Stack by Category",font=dict(size=12,color="#6b4fa0")), bargap=0.25)
             st.plotly_chart(fig3, use_container_width=True)
@@ -2660,7 +3108,7 @@ elif page == "Lead Intelligence":
                         opacity=0.92,
                         error_y=dict(type="data", array=[max(r["max"]-r["mean"],0)], arrayminus=[max(r["mean"]-r["min"],0)], thickness=1, width=4, color="#9b7ec8"),
                         text=[f"{r['mean']:.2f}%"], textposition="outside",
-                        textfont=dict(color="#ffffff", size=11),
+                        textfont=dict(color="#080808", size=11),
                         hovertemplate=f"<b>{r['Category_Name']}</b><br>Avg ER: {r['mean']:.2f}%<br>Min: {r['min']:.2f}%<br>Max: {r['max']:.2f}%<extra></extra>",
                         name=r["Category_Name"],
                     ))
@@ -2767,7 +3215,7 @@ elif page == "Post Analytics":
         post_date = str(row.get("Post_Date",""))[:10]
         category  = str(row.get("Category_Name","—")).title()
         quality   = str(row.get("Lead_Quality","—"))
-        q_color   = Q_CLR.get(quality,"#9b7ec8")
+        q_color   = Q_CLR.get(quality,"#9451f9")
         q_badge   = f'<span style="background:{q_color}22;color:{q_color};font-size:11px;font-weight:500;padding:2px 9px;border-radius:20px;border:1px solid {q_color}44">{quality.title()}</span>'
         cat_color = CAT_CLR.get(str(row.get("Category_Name","")).lower(),"#a855f7")
 
@@ -2784,10 +3232,10 @@ elif page == "Post Analytics":
 
         pills_html = '<div style="margin-bottom:18px;display:flex;flex-wrap:wrap;">'
         stats = [
-            ("Likes",      fmt(safe_int(row.get("Likes",0))),           "#4ade80"),
-            ("Comments",   fmt(safe_int(row.get("Comments",0))),         "#818cf8"),
-            ("Engagement", fmt(safe_int(row.get("Engagement",0))),       "#c084fc"),
-            ("Lead Score", f"{safe_float(row.get('Lead_Score',0)):.1f}", "#fbbf24"),
+            ("Likes",      fmt(safe_int(row.get("Likes",0))),           "#2a10ef"),
+            ("Comments",   fmt(safe_int(row.get("Comments",0))),         "#821af2"),
+            ("Engagement", fmt(safe_int(row.get("Engagement",0))),       "#f31882"),
+            ("Lead Score", f"{safe_float(row.get('Lead_Score',0)):.1f}", "#ff000d"),
         ]
         if lead_found:
             inf_row = leads_full[lead_mask].iloc[0]
@@ -2809,7 +3257,7 @@ elif page == "Post Analytics":
             p1, p2, p3, p4 = st.columns(4)
             p1.markdown(kpi("Total Posts",    f"{len(handle_posts):,}",                                  "by this user",   "#a855f7","#ec4899",60), unsafe_allow_html=True)
             p2.markdown(kpi("Followers",      fmt(safe_int(inf_r.get("Follower_Count",0))),        "master profile", "#4ade80","#22c55e",65), unsafe_allow_html=True)
-            p3.markdown(kpi("Accts Following",f"{round(safe_float(inf_r.get('Following_Count',0))):,}", "master profile","#c084fc","#a855f7",45), unsafe_allow_html=True)
+            p3.markdown(kpi("Following",f"{round(safe_float(inf_r.get('Following_Count',0))):,}", "master profile","#c084fc","#a855f7",45), unsafe_allow_html=True)
             p4.markdown(kpi("Sentiment",      sent_text,                                            "master profile", sent_color,sent_color,70), unsafe_allow_html=True)
         else:
             st.info(f"No influencer master record found for {handle}.")
@@ -2875,7 +3323,7 @@ elif page == "Post Analytics":
             x=me["Month"], y=me["Engagement"],
             marker_color="#2563eb", marker_line_width=0, opacity=0.92, name="Engagement",
         ))
-        fig.add_trace(go.Scatter(x=me["Month"], y=me["Engagement"], mode="lines", line=dict(color="#ec4899",width=1.5), showlegend=False))
+        fig.add_trace(go.Scatter(x=me["Month"], y=me["Engagement"], mode="lines", line=dict(color="#06010b",width=1.5), showlegend=False))
         dark(fig, 300)
         fig.update_layout(title=dict(text="Monthly Post Engagement", font=dict(size=12,color="#6b4fa0")), bargap=0.22)
         st.plotly_chart(fig, use_container_width=True)
@@ -2908,7 +3356,7 @@ elif page == "Post Analytics":
         pivot = (posts_pa.groupby(["MonthName","Category_Name"])["Engagement"].sum().unstack("Category_Name").fillna(0))
         fig3 = px.imshow(pivot, color_continuous_scale=["#0e0814","#2d1555","#7e22ce","#d8b4fe"], aspect="auto")
         dark(fig3, 280)
-        fig3.update_layout(title=dict(text="Total Engagement by Month & Category", font=dict(size=12,color="#6b4fa0")), coloraxis_colorbar=dict(tickfont=dict(color="#9b7ec8")))
+        fig3.update_layout(title=dict(text="Total Engagement by Month & Category", font=dict(size=12,color="#6b4fa0")), coloraxis_colorbar=dict(tickfont=dict(color="#121112")))
         st.plotly_chart(fig3, use_container_width=True)
 
     sec("☁️ Trending Hashtags")
@@ -3106,10 +3554,11 @@ elif page == "AI Insights":
                 escaped = html.escape(content).replace("\n","<br>")
                 st.markdown(
                     f'<div style="display:flex;justify-content:flex-start;margin-bottom:10px;">'
-                    f'<div style="background:linear-gradient(180deg,rgba(10,16,30,0.98),rgba(6,10,19,0.98));'
-                    f'border:1px solid #1a2740;border-left:3px solid #a855f7;'
-                    f'border-radius:14px 14px 14px 4px;padding:10px 16px;max-width:80%;'
-                    f'font-size:13px;color:#9fb0d2;line-height:1.7;">'
+                    f'<div style="background:linear-gradient(135deg,#ffffff,#f5f8ff);'
+                    f'border:1px solid #dbe6f5;border-left:3px solid #a855f7;'
+                    f'border-radius:14px 14px 14px 4px;padding:12px 16px;max-width:82%;'
+                    f'font-size:13px;color:#1e293b;line-height:1.75;'
+                    f'box-shadow:0 4px 18px rgba(79,124,255,0.09);">'
                     f'<span style="font-size:10px;color:#a855f7;font-weight:700;text-transform:uppercase;'
                     f'letter-spacing:.06em;display:block;margin-bottom:6px">✨ InstaScribe AI</span>'
                     f'{escaped}</div></div>', unsafe_allow_html=True)
@@ -3199,73 +3648,335 @@ elif page == "AI Insights":
         else:
             st.markdown('<div class="insight" style="--ac:#818cf8;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">📊</div><div style="font-size:13px;color:#9fb0d2">Click <b style="color:#f4f7ff">Generate Executive Summary</b> to get an AI briefing.</div></div>', unsafe_allow_html=True)
 
+    # ── REPLACE the entire "with tab_post:" block with this ──────────────────
+
     with tab_post:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
-        desc("<b>Post ID Analyser</b> — deep-dive any post: metrics, vs-handle-average, sentiment, and recommendation.")
-        post_id_val = st.text_input("Post ID", placeholder="e.g. POST_000001", key="ai_tab_post_id")
-        if post_id_val.strip() and "Post_ID" in ai_posts.columns:
-            hits = ai_posts[ai_posts["Post_ID"].astype(str).str.lower().str.contains(
-                post_id_val.strip().lower(), na=False)]["Post_ID"].head(5).tolist()
-            if hits:
-                st.markdown(f'<div style="font-size:11px;color:#6b4fa0;margin-top:-8px;margin-bottom:8px">Matches: {" · ".join(hits)}</div>', unsafe_allow_html=True)
+        desc(
+            "<b>Post ID Analyser</b> — forensic breakdown of a <i>single post</i>. "
+            "How did it perform vs this creator's average? Was the sentiment strong? "
+            "Did the hashtags pull their weight?"
+        )
 
-        if st.button("🔍 Analyse Post", key="ai_analyse_post_btn"):
-            if not post_id_val.strip():
-                st.warning("Please enter a Post ID first.")
+        all_post_ids = (
+            sorted(ai_posts["Post_ID"].dropna().astype(str).unique().tolist())
+            if "Post_ID" in ai_posts.columns else []
+        )
+        filtered_pids = all_post_ids
+
+        # ── Post ID dropdown ──────────────────────────────────────────────
+        with st.form("post_analyser_form", clear_on_submit=False):
+            if filtered_pids:
+                sel_pid_tab = st.selectbox(
+                    f"📋 Post ID ({len(filtered_pids):,} available — type to search)",
+                    filtered_pids,
+                    key="ai_tab_post_sel",
+                )
             else:
-                post_ctx = _profile_context_for_post(post_id_val.strip(), ai_posts)
-                sys_p = ("You are InstaScribe AI. Analyse this post deeply. Cover: "
-                         "1) Performance summary, 2) Comparison to handle average, "
-                         "3) Hashtag strategy, 4) Sentiment & audience reaction, "
-                         "5) One clear recommendation. Use exact numbers.")
-                answer, err = _call_groq(sys_p, f"Analyse this post:\n{post_ctx}")
+                sel_pid_tab = None
+                st.warning("No Post IDs found for the selected handle.")
+            analyse_clicked = st.form_submit_button("🔬 Analyse This Post")
+
+        post_id_val = sel_pid_tab or ""
+
+        # ── Post snapshot metrics ─────────────────────────────────────────
+        if post_id_val and "Post_ID" in ai_posts.columns:
+            raw_row = ai_posts[
+                ai_posts["Post_ID"].astype(str).str.strip().str.lower()
+                == post_id_val.strip().lower()
+            ]
+            if len(raw_row) > 0:
+                pr = raw_row.iloc[0]
+                handle_of_post = str(pr.get("Handle", ""))
+
+                
+
+                h_posts_all = pd.DataFrame()
+                if handle_of_post and "Handle" in ai_posts.columns:
+                    h_posts_all = ai_posts[
+                        ai_posts["Handle"].astype(str).str.strip().str.lower()
+                        == handle_of_post.strip().lower()
+                    ]
+                    avg_eng     = h_posts_all["Engagement"].mean() if len(h_posts_all) > 0 else 0
+                    this_eng    = safe_float(pr.get("Engagement", 0))
+                    delta_pct   = ((this_eng - avg_eng) / max(avg_eng, 1)) * 100
+                    delta_color = "#4ade80" if delta_pct >= 0 else "#f87171"
+                    delta_sign  = "+" if delta_pct >= 0 else ""
+                    
+                st.markdown('<div style="margin-bottom:8px"></div>', unsafe_allow_html=True)
+
+                if handle_of_post and len(h_posts_all) > 1 and "Engagement" in h_posts_all.columns:
+                    this_eng   = safe_float(pr.get("Engagement", 0))
+                    rank       = int((h_posts_all["Engagement"] > this_eng).sum() + 1)
+                    total_hp   = len(h_posts_all)
+                    pct_rank   = (1 - rank / total_hp) * 100
+                    rank_color = "#4ade80" if pct_rank >= 66 else ("#fbbf24" if pct_rank >= 33 else "#f87171")
+                    st.markdown(
+                        f'<div class="insight" style="--ac:{rank_color};margin-bottom:12px">'
+                        f'📊 This post ranks <b style="color:{rank_color}">#{rank} of {total_hp}</b> '
+                        f'posts by @{handle_of_post} — top <b>{100 - int(pct_rank):.0f}%</b>. '
+                        f'{"🔥 Standout post." if pct_rank >= 66 else ("📈 Above average." if pct_rank >= 33 else "📉 Below average.")}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+        if analyse_clicked:
+            if not post_id_val:
+                st.warning("Please select a Post ID first.")
+            else:
+                post_ctx  = _profile_context_for_post(post_id_val.strip(), ai_posts)
+                extra_ctx = ""
+                pr2 = ai_posts[
+                    ai_posts["Post_ID"].astype(str).str.strip().str.lower()
+                    == post_id_val.strip().lower()
+                ]
+                if len(pr2) > 0:
+                    h2 = str(pr2.iloc[0].get("Handle", ""))
+                    if h2 and "Handle" in ai_posts.columns:
+                        h2_posts = ai_posts[
+                            ai_posts["Handle"].astype(str).str.strip().str.lower()
+                            == h2.strip().lower()
+                        ]
+                        if len(h2_posts) > 0:
+                            extra_ctx = (
+                                f"\n\nHandle averages for @{h2} across {len(h2_posts)} posts:\n"
+                                f"Avg Likes: {h2_posts['Likes'].mean():.0f}\n"
+                                f"Avg Comments: {h2_posts['Comments'].mean():.0f}\n"
+                                f"Avg Engagement: {h2_posts['Engagement'].mean():.0f}\n"
+                            )
+                            if "Sentiment_Score" in h2_posts.columns:
+                                extra_ctx += f"Avg Sentiment: {h2_posts['Sentiment_Score'].mean():.3f}\n"
+
+                sys_p = (
+                    "You are InstaScribe AI performing SINGLE-POST FORENSICS. "
+                    "Your job is to diagnose why this specific post performed the way it did. "
+                    "Structure your response with these exact sections:\n"
+                    "1) POST VERDICT — one sentence: was this post a hit, average, or miss?\n"
+                    "2) PERFORMANCE VS AVERAGE — compare this post's numbers to the handle's averages. Use exact % differences.\n"
+                    "3) HASHTAG AUTOPSY — which hashtags likely helped or hurt reach?\n"
+                    "4) SENTIMENT SIGNAL — what does the sentiment score tell us about audience reaction?\n"
+                    "5) ONE ACTIONABLE FINDING — what should the creator do differently or repeat?\n"
+                    "Be specific. Use exact numbers. Keep each section to 2-3 sentences."
+                )
+                answer, err = _call_groq(
+                    sys_p,
+                    f"Analysis of post {post_id_val}:\n{post_ctx}{extra_ctx}",
+                )
                 st.session_state["ai_post_result"] = err if err else answer
 
         if st.session_state["ai_post_result"]:
-            _render_ai_panel(f"🔍 Post Analysis — {post_id_val.strip() or ''}", st.session_state["ai_post_result"], accent="#818cf8", margin_top=True)
-            if post_id_val.strip() and "Post_ID" in ai_posts.columns:
-                raw_row=ai_posts[ai_posts["Post_ID"].astype(str).str.strip().str.lower()==post_id_val.strip().lower()]
-                if len(raw_row)>0:
+            _render_ai_panel(
+                f"🔬 Post Forensics — {post_id_val}",
+                st.session_state["ai_post_result"],
+                accent="#818cf8",
+                margin_top=True,
+            )
+            if post_id_val and "Post_ID" in ai_posts.columns:
+                raw_row2 = ai_posts[
+                    ai_posts["Post_ID"].astype(str).str.strip().str.lower()
+                    == post_id_val.strip().lower()
+                ]
+                if len(raw_row2) > 0:
                     with st.expander("Raw post record", expanded=False):
-                        show_cols=[c for c in ["Post_ID","Handle","Post_Date","Likes","Comments","Engagement","Sentiment_Score","Hashtags","Category_Name","Lead_Score"] if c in raw_row.columns]
-                        st.dataframe(raw_row[show_cols].reset_index(drop=True), use_container_width=True, hide_index=True)
+                        show_cols = [c for c in [
+                            "Post_ID", "Handle", "Post_Date", "Likes",
+                            "Comments", "Engagement", "Sentiment_Score",
+                            "Hashtags", "Category_Name", "Lead_Score",
+                        ] if c in raw_row2.columns]
+                        st.dataframe(
+                            raw_row2[show_cols].reset_index(drop=True),
+                            use_container_width=True, hide_index=True,
+                        )
         else:
-            st.markdown('<div class="insight" style="--ac:#818cf8;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">🔍</div><div style="font-size:13px;color:#9fb0d2">Enter a <b style="color:#f4f7ff">Post ID</b> above and click Analyse Post.</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="insight" style="--ac:#818cf8;text-align:center;padding:32px 20px;">'
+                '<div style="font-size:28px;margin-bottom:10px">🔬</div>'
+                '<div style="font-size:13px;color:#9fb0d2">'
+                'Type a handle name above to filter, or go straight to picking a '
+                '<b style="color:#f4f7ff">Post ID</b> and click '
+                '<b style="color:#f4f7ff">Analyse This Post</b>.'
+                '</div></div>',
+                unsafe_allow_html=True,
+            )
 
+    # ════════════════════════════════════════════════════════════════
+    # TAB: CONTENT STRATEGY ANALYSER  — full creator profile
+    # ════════════════════════════════════════════════════════════════
     with tab_content:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
-        desc("<b>Post Content Analyser</b> — pick a Handle to analyse all their posts. "
-             "AI identifies patterns, hashtag combos, engagement trend, and strategy gaps.")
-        handle_opts = [""] + sorted(ai_leads["Handle"].dropna().astype(str).unique().tolist()) \
-                      if "Handle" in ai_leads.columns else [""]
-        content_handle = st.selectbox("Select Handle", handle_opts, key="ai_content_handle_sel",
-                                       format_func=lambda x: "— choose a handle —" if x=="" else x)
+        desc(
+            "<b>Content Strategy Analyser</b> — macro-level creator intelligence across "
+            "<i>all their posts</i>. Posting patterns, hashtag DNA, engagement trajectory, "
+            "and whether this creator is worth a partnership."
+        )
+
+        # ── Step 1: Category pre-filter ───────────────────────────────────
+        cat_opts_content = [""] + (
+            sorted(ai_leads["Category_Name"].dropna().astype(str).unique().tolist())
+            if "Category_Name" in ai_leads.columns else []
+        )
+        sel_cat_content = st.selectbox(
+            "📂 Filter by Category (optional — type to search)",
+            cat_opts_content,
+            key="ai_content_cat_filter",
+            format_func=lambda x: "— all categories —" if x == "" else x,
+        )
+
+        # ── Step 2: Handle list filtered by category ──────────────────────
+        if sel_cat_content and "Category_Name" in ai_leads.columns:
+            cat_mask = (
+                ai_leads["Category_Name"].astype(str).str.strip().str.lower()
+                == sel_cat_content.strip().lower()
+            )
+            handles_in_cat = sorted(
+                ai_leads.loc[cat_mask, "Handle"].dropna().astype(str).unique().tolist()
+            )
+        else:
+            handles_in_cat = (
+                sorted(ai_leads["Handle"].dropna().astype(str).unique().tolist())
+                if "Handle" in ai_leads.columns else []
+            )
+
+        if "Handle" in ai_posts.columns:
+            post_handles = set(ai_posts["Handle"].dropna().astype(str).unique().tolist())
+            extra_handles = sorted(post_handles - set(handles_in_cat))
+            all_content_handles = [""] + handles_in_cat + extra_handles
+        else:
+            all_content_handles = [""] + handles_in_cat
+
+        if sel_cat_content:
+            st.markdown(
+                f'<div style="font-size:12px;color:#6b4fa0;margin-bottom:4px;">'
+                f'{len(handles_in_cat):,} handle(s) in <b>{sel_cat_content}</b></div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── Step 3: Handle dropdown ───────────────────────────────────────
+        content_handle = st.selectbox(
+            f"👤 Handle ( type to search)",
+            all_content_handles,
+            key="ai_content_handle_select",
+            format_func=lambda x: "— choose a handle —" if x == "" else x,
+        )
+
+        # ── Creator summary stats across ALL posts ────────────────────────
+        if content_handle and "Handle" in ai_posts.columns:
+            h_all = ai_posts[
+                ai_posts["Handle"].astype(str).str.strip().str.lower()
+                == content_handle.strip().lower()
+            ].copy()
+
+            if len(h_all) > 0:
+                total_posts_h  = len(h_all)
+                avg_likes_h    = h_all["Likes"].mean()    if "Likes"    in h_all.columns else 0
+                avg_comments_h = h_all["Comments"].mean() if "Comments" in h_all.columns else 0
+                Likes     = h_all["Likes"].sum()    if "Likes"    in h_all.columns else 0
+                Followers= h_all["Follower_Count"].max() if "Follower_Count" in h_all.columns else 0
+                best_post_eng  = h_all["Engagement"].max()
+                
+
+                
+                st.markdown('<div style="margin-bottom:4px"></div>', unsafe_allow_html=True)
+
+                # ── Engagement trajectory sparkline ───────────────────────
+                if "Post_Date" in h_all.columns and len(h_all) > 2:
+                    h_sorted = h_all.sort_values("Post_Date")
+                    monthly_h = h_sorted.groupby("Month")["Engagement"].sum().reset_index()
+                    if len(monthly_h) > 1:
+                        sec(f"📈 Engagement Trajectory — @{content_handle}")
+                        # Trend direction
+                        first_half  = monthly_h["Engagement"].iloc[:len(monthly_h)//2].mean()
+                        second_half = monthly_h["Engagement"].iloc[len(monthly_h)//2:].mean()
+                        trend_pct   = ((second_half - first_half) / max(first_half, 1)) * 100
+                        trend_color = "#4ade80" if trend_pct >= 0 else "#f87171"
+                        trend_label = f"{'📈' if trend_pct >= 0 else '📉'} {'+' if trend_pct >= 0 else ''}{trend_pct:.1f}% vs first half of history"
+
+                        fig_traj = go.Figure()
+                        fig_traj.add_trace(go.Scatter(
+                            x=monthly_h["Month"], y=monthly_h["Engagement"],
+                            mode="lines+markers",
+                            line=dict(color="#4ade80", width=2.5),
+                            marker=dict(size=6, color="#22c55e"),
+                            fill="tozeroy", fillcolor="rgba(74,222,128,0.07)",
+                            name="Monthly Engagement",
+                        ))
+                        # Rolling average
+                        if len(monthly_h) >= 3:
+                            monthly_h["Rolling"] = monthly_h["Engagement"].rolling(3, min_periods=1).mean()
+                            fig_traj.add_trace(go.Scatter(
+                                x=monthly_h["Month"], y=monthly_h["Rolling"],
+                                mode="lines",
+                                line=dict(color="#fbbf24", width=1.5, dash="dot"),
+                                name="3-month avg",
+                            ))
+                        dark(fig_traj, 240)
+                        fig_traj.update_layout(
+                            title=dict(text=f"Monthly Engagement  ·  {trend_label}", font=dict(size=12, color=trend_color)),
+                            legend=dict(orientation="h", y=-0.25, font=dict(size=10)),
+                        )
+                        st.plotly_chart(fig_traj, use_container_width=True)
+
+                
+        # ── Analyse button ────────────────────────────────────────────────
         if st.button("📝 Analyse Content Strategy", key="ai_content_analyse_btn"):
             if not content_handle:
                 st.warning("Please select a handle first.")
             else:
                 hctx = _profile_context_for_handle(content_handle, ai_leads, ai_posts)
-                sys_p = ("You are InstaScribe AI, a content strategy expert. Analyse this creator. "
-                         "Cover: 1) Performance overview, 2) Top hashtag patterns, "
-                         "3) Engagement trend, 4) Likes vs comments ratio, "
-                         "5) Three specific content recommendations. Use exact numbers.")
-                answer, err = _call_groq(sys_p, f"Analyse content strategy for:\n{hctx}")
+
+                # Build richer context: top/bottom posts, posting cadence
+                extra_content_ctx = ""
+                if "Handle" in ai_posts.columns:
+                    h_ctx_posts = ai_posts[
+                        ai_posts["Handle"].astype(str).str.strip().str.lower()
+                        == content_handle.strip().lower()
+                    ].copy()
+                    if len(h_ctx_posts) > 0:
+                        top3 = h_ctx_posts.nlargest(3, "Engagement")[["Post_ID","Engagement","Likes","Comments"]].to_string(index=False)
+                        bot3 = h_ctx_posts.nsmallest(3, "Engagement")[["Post_ID","Engagement","Likes","Comments"]].to_string(index=False)
+                        if "Post_Date" in h_ctx_posts.columns:
+                            h_ctx_posts["Post_Date"] = pd.to_datetime(h_ctx_posts["Post_Date"], errors="coerce")
+                            h_ctx_posts["DayOfWeek"] = h_ctx_posts["Post_Date"].dt.day_name()
+                            best_day = h_ctx_posts.groupby("DayOfWeek")["Engagement"].mean().idxmax()
+                            extra_content_ctx += f"\nBest posting day (avg engagement): {best_day}\n"
+                        extra_content_ctx += f"\nTop 3 posts by engagement:\n{top3}\n"
+                        extra_content_ctx += f"\nBottom 3 posts by engagement:\n{bot3}\n"
+
+                sys_p = (
+                    "You are InstaScribe AI performing a CREATOR CONTENT STRATEGY AUDIT. "
+                    "This is NOT about a single post — it's about the creator's overall content DNA. "
+                    "Structure your response with these exact sections:\n"
+                    "1) CREATOR VERDICT — is this creator worth partnering with? One sentence.\n"
+                    "2) ENGAGEMENT PATTERN — how consistent is their engagement? Growing or declining? Use numbers.\n"
+                    "3) CONTENT DNA — what types of posts (based on hashtags) drive the most engagement for them?\n"
+                    "4) AUDIENCE BEHAVIOUR — what does the likes-to-comments ratio tell us about their audience?\n"
+                    "5) BEST POSTING STRATEGY — when should they post and what content format works best?\n"
+                    "6) PARTNERSHIP RECOMMENDATION — concrete yes/no with budget tier suggestion and campaign angle.\n"
+                    "Be strategic and specific. Use exact numbers. Think like a CMO."
+                )
+                answer, err = _call_groq(
+                    sys_p,
+                    f"Full content strategy audit for @{content_handle}:\n{hctx}{extra_content_ctx}",
+                )
                 st.session_state["ai_content_result"] = err if err else answer
 
         if st.session_state["ai_content_result"]:
-            if content_handle and "Handle" in ai_leads.columns:
-                h_mask = ai_leads["Handle"].astype(str).str.strip().str.lower() == content_handle.strip().lower()
-                if h_mask.any():
-                    h_row=ai_leads[h_mask].iloc[0]; sent_t,sent_c=sentiment_code(h_row.get("Avg_Sentiment",0))
-                    hp1,hp2,hp3,hp4=st.columns(4,gap="large")
-                    hp1.markdown(kpi("Followers",      fmt(safe_int(h_row.get("Follower_Count",0))),    content_handle,    "#a855f7","#ec4899",65), unsafe_allow_html=True)
-                    hp2.markdown(kpi("Engagement Rate",f"{safe_float(h_row.get('Engagement_Rate')):.2f}%","",               "#818cf8","#6366f1",60), unsafe_allow_html=True)
-                    hp3.markdown(kpi("Lead Score",     f"{safe_float(h_row.get('Lead_Score')):.1f}",    "/100",             "#c084fc","#a855f7",int(safe_float(h_row.get('Lead_Score')))), unsafe_allow_html=True)
-                    hp4.markdown(kpi("Sentiment",      sent_t,                                         "",                 sent_c,sent_c,70), unsafe_allow_html=True)
-                    st.markdown('<div style="margin-top:12px"></div>', unsafe_allow_html=True)
-            _render_ai_panel(f"📝 Content Strategy — {content_handle or ''}", st.session_state["ai_content_result"], accent="#4ade80")
+            _render_ai_panel(
+                f"📝 Content Strategy Audit — @{content_handle or ''}",
+                st.session_state["ai_content_result"],
+                accent="#4ade80",
+            )
         else:
-            st.markdown('<div class="insight" style="--ac:#4ade80;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">📝</div><div style="font-size:13px;color:#9fb0d2">Select a <b style="color:#f4f7ff">Handle</b> and click Analyse Content Strategy.</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="insight" style="--ac:#4ade80;text-align:center;padding:32px 20px;">'
+                '<div style="font-size:28px;margin-bottom:10px">📝</div>'
+                '<div style="font-size:13px;color:#9fb0d2">'
+                'Filter by Category, pick a Handle, then click '
+                '<b style="color:#f4f7ff">Analyse Content Strategy</b> '
+                'for a full creator audit.'
+                '</div></div>',
+                unsafe_allow_html=True,
+            )
 
     with tab_rec:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
@@ -3299,49 +4010,163 @@ elif page == "AI Insights":
 
     with tab_custom:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
-        desc("<b>Custom Question</b> — ask anything specific. Mention a Handle or Post ID for entity-level detail.")
-        custom_q = st.text_area("Your question",
-            placeholder=("Examples:\n"
-                          "• What is the engagement rate of @handlename?\n"
-                          "• Compare Tech and Fashion categories\n"
-                          "• Generate an outreach email for the top fitness influencer"),
-            height=130, key="ai_custom_q_input")
-        if st.button("✨ Ask AI", key="ai_custom_ask_btn"):
+        desc("<b>Custom Question</b> — ask anything specific. Press <b>Enter</b> or click "
+             "<b>Ask AI</b>. Supports ranked lists, category comparisons, outreach emails, and more.")
+
+        with st.form("custom_question_form", clear_on_submit=False):
+            custom_q = st.text_area(
+                "Your question",
+                placeholder=(
+                    "Examples:\n"
+                    "• Generate top 20 influencers with high leads for fashion category\n"
+                    "• What is the engagement rate of @handlename?\n"
+                    "• Compare Tech vs Fashion lead quality\n"
+                    "• Generate an outreach email for the top lead\n"
+                    "• Which handles have the best engagement-to-follower ratio?"
+                ),
+                height=130,
+                key="ai_custom_q_input",
+            )
+            ask_clicked = st.form_submit_button("✨ Ask AI")
+
+        if ask_clicked:
             if not custom_q.strip():
                 st.warning("Please enter a question first.")
             else:
-                ctx, p_matches, h_matches = _build_ai_context(custom_q.strip(), ai_leads, ai_posts)
-                sys_p = ("You are InstaScribe AI. Answer using ONLY the dataset context. "
-                         "If the question mentions a Handle or Post ID, include their specific metrics. "
-                         "If the answer isn't in the data, say so clearly.")
-                answer, err = _call_groq(sys_p, f"Question: {custom_q}\n\nDataset context:\n{ctx}")
+                question = custom_q.strip()
+                ctx, p_matches, h_matches = _build_ai_context(question, ai_leads, ai_posts)
+                q_lower = question.lower()
+                extra_blocks = []
+
+                # Detect top-N request
+                n_match = re.search(r'\btop[- ]?(\d+)\b', q_lower)
+                n_count = int(n_match.group(1)) if n_match else 20
+
+                # Detect category filter
+                cat_filter = None
+                if "Category_Name" in ai_leads.columns:
+                    for _cat in ai_leads["Category_Name"].dropna().unique():
+                        if str(_cat).lower() in q_lower:
+                            cat_filter = _cat
+                            break
+
+                # Detect quality filter
+                quality_filter = None
+                if any(kw in q_lower for kw in ["high lead","high quality","high priority"]):
+                    quality_filter = "high"
+                elif any(kw in q_lower for kw in ["medium lead","medium quality"]):
+                    quality_filter = "medium"
+                elif any(kw in q_lower for kw in ["low lead","low quality"]):
+                    quality_filter = "low"
+
+                # Build the requested subset for list questions
+                subset_df = ai_leads.copy()
+                if cat_filter and "Category_Name" in subset_df.columns:
+                    subset_df = subset_df[
+                        subset_df["Category_Name"].astype(str).str.lower() == str(cat_filter).lower()
+                    ]
+                if quality_filter and "Lead_Quality" in subset_df.columns:
+                    subset_df = subset_df[subset_df["Lead_Quality"] == quality_filter]
+                if "Lead_Score" in subset_df.columns:
+                    subset_df = subset_df.nlargest(n_count, "Lead_Score")
+
+                show_cols = [c for c in [
+                    "Handle","Category_Name","Lead_Score","Lead_Quality",
+                    "Follower_Count","Engagement_Rate","Avg_Sentiment","Action",
+                ] if c in subset_df.columns]
+                if len(subset_df) > 0:
+                    tbl_str = subset_df[show_cols].to_string(index=False)
+                    filter_desc = []
+                    if cat_filter:     filter_desc.append(f"category={cat_filter}")
+                    if quality_filter: filter_desc.append(f"quality={quality_filter}")
+                    label = f"Top {n_count} influencers" + (
+                        f" ({', '.join(filter_desc)})" if filter_desc else ""
+                    )
+                    extra_blocks.append(f"{label}:\n{tbl_str}")
+
+                # Inject category summary when relevant
+                if "category" in q_lower and "Category_Name" in ai_leads.columns:
+                    cat_summary = (
+                        ai_leads.groupby("Category_Name").agg(
+                            Count=("Handle","count"),
+                            Avg_Lead_Score=("Lead_Score","mean"),
+                            Avg_ER=("Engagement_Rate","mean"),
+                            High_Leads=("Lead_Quality", lambda x: (x=="high").sum()),
+                        ).round(2).to_string()
+                    )
+                    extra_blocks.append(f"Category summary:\n{cat_summary}")
+
+                full_context = ctx
+                if extra_blocks:
+                    full_context += "\n\n---\n\n" + "\n\n---\n\n".join(extra_blocks)
+
+                sys_p = (
+                    "You are InstaScribe AI, an expert influencer marketing analyst. "
+                    "Answer the user's question using ONLY the dataset context and tables provided. "
+                    "When asked for a list or top-N, output a clear numbered list "
+                    "with the exact handles, scores, and metrics from the supplied table. "
+                    "When asked to compare categories, use the category summary table. "
+                    "When asked to generate an email or copy, write it in full. "
+                    "Be specific, use exact numbers, and be actionable. "
+                    "If information is not in the dataset, say so clearly."
+                )
+                answer, err = _call_groq(
+                    sys_p,
+                    f"Question: {question}\n\nDataset context:\n{full_context}",
+                )
                 st.session_state["ai_custom_result"] = err if err else answer
-                st.session_state["ai_custom_matches"] = {"posts":p_matches,"handles":h_matches}
+                st.session_state["ai_custom_matches"] = {"posts": p_matches, "handles": h_matches}
 
         if st.session_state["ai_custom_result"]:
-            _render_ai_panel("✨ AI Answer", st.session_state["ai_custom_result"], accent="#ec4899", margin_top=True)
-            matches = st.session_state.get("ai_custom_matches",{})
+            _render_ai_panel(
+                "✨ AI Answer",
+                st.session_state["ai_custom_result"],
+                accent="#ec4899",
+                margin_top=True,
+            )
+            matches = st.session_state.get("ai_custom_matches", {})
             if matches.get("posts") or matches.get("handles"):
                 with st.expander("Dataset records used", expanded=False):
-                    if matches.get("posts"):    st.markdown(f"**Post IDs:** {', '.join(matches['posts'])}")
-                    if matches.get("handles"):  st.markdown(f"**Handles:** {', '.join(matches['handles'])}")
+                    if matches.get("posts"):
+                        st.markdown(f"**Post IDs:** {', '.join(matches['posts'])}")
+                    if matches.get("handles"):
+                        st.markdown(f"**Handles:** {', '.join(matches['handles'])}")
         else:
-            st.markdown('<div class="insight" style="--ac:#ec4899;text-align:center;padding:32px 20px;"><div style="font-size:28px;margin-bottom:10px">❓</div><div style="font-size:13px;color:#9fb0d2">Type your question and click <b style="color:#f4f7ff">Ask AI</b>.</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="insight" style="--ac:#ec4899;text-align:center;padding:32px 20px;">'
+                '<div style="font-size:28px;margin-bottom:10px">❓</div>'
+                '<div style="font-size:13px;color:#9fb0d2">Type your question and press '
+                '<b style="color:#f4f7ff">Enter</b> or click '
+                '<b style="color:#f4f7ff">✨ Ask AI</b>.</div></div>',
+                unsafe_allow_html=True,
+            )
 
         sec("💡 Suggested Questions")
-        sg1,sg2,sg3=st.columns(3)
-        suggestions=[
-            ("Which influencer has the highest engagement rate?","#818cf8"),
-            ("Compare Tech vs Fashion lead quality","#4ade80"),
-            ("Generate an outreach email for the top lead","#fbbf24"),
-            ("What are the riskiest influencers?","#f87171"),
-            ("Which handles have declining engagement?","#c084fc"),
-            ("What hashtag strategy works best for Fitness?","#ec4899"),
+        sg1, sg2, sg3 = st.columns(3)
+        suggestions = [
+            ("Top 20 high-lead influencers in fashion category", "#818cf8"),
+            ("Compare Tech vs Fashion lead quality",             "#4ade80"),
+            ("Generate an outreach email for the top lead",      "#fbbf24"),
+            ("Which handles have the best engagement rate?",     "#f87171"),
+            ("Which handles have declining engagement?",         "#c084fc"),
+            ("Best hashtag strategy for Fitness category?",      "#ec4899"),
         ]
-        sg_cols=[sg1,sg2,sg3,sg1,sg2,sg3]
-        for i,(sug,col) in enumerate(suggestions):
-            sg_cols[i].markdown(f'<div class="insight" style="--ac:{col};font-size:12px;">{html.escape(sug)}</div>', unsafe_allow_html=True)
+        sg_cols = [sg1, sg2, sg3, sg1, sg2, sg3]
+        for i, (sug, col) in enumerate(suggestions):
+            if sg_cols[i].button(sug, key=f"sg_btn_{i}", use_container_width=True):
+                st.session_state["ai_custom_q_input"] = sug
+                _ctx, _pm, _hm = _build_ai_context(sug, ai_leads, ai_posts)
+                _ans, _err = _call_groq(
+                    "You are InstaScribe AI. Answer using only the dataset context. Be specific.",
+                    f"Question: {sug}\n\nDataset context:\n{_ctx}",
+                )
+                st.session_state["ai_custom_result"] = _err if _err else _ans
+                st.session_state["ai_custom_matches"] = {"posts": _pm, "handles": _hm}
+                st.rerun()
 
+
+elif page == "Subscription":
+    render_subscription_page()
 
 # ==========================================================
 # PAGE 6 — ABOUT
@@ -3461,6 +4286,7 @@ elif page == "About":
 st.markdown("---")
 st.markdown(
     '<div style="text-align:center;font-size:11px;font-family:\'DM Mono\',monospace;'
+    'font-weight:bold;'
     'background:linear-gradient(90deg,#a855f7,#ec4899);'
     '-webkit-background-clip:text;-webkit-text-fill-color:transparent">'
     'InstaScribe · Creator Intelligence · Streamlit + Supabase + Plotly</div>',
