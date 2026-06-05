@@ -3755,7 +3755,7 @@ elif page == "AI Insights":
                     "Structure your response with these exact sections:\n"
                     "1) POST VERDICT — one sentence: was this post a hit, average, or miss?\n"
                     "2) PERFORMANCE VS AVERAGE — compare this post's numbers to the handle's averages. Use exact % differences.\n"
-                    "3) HASHTAG AUTOPSY — which hashtags likely helped or hurt reach?\n"
+                    "3) HASHTAG ANALYSIS — which hashtags likely helped or hurt reach?\n"
                     "4) SENTIMENT SIGNAL — what does the sentiment score tell us about audience reaction?\n"
                     "5) ONE ACTIONABLE FINDING — what should the creator do differently or repeat?\n"
                     "Be specific. Use exact numbers. Keep each section to 2-3 sentences."
@@ -3774,7 +3774,7 @@ elif page == "AI Insights":
 
 
             _render_ai_panel(
-                f"🔬 Post Forensics — {post_id_val}  ·  @{handle_of_post}" if handle_of_post else f"🔬 Post Forensics — {post_id_val}",
+                f"🔬 Post Analysis of — {post_id_val}  ·  @{_handle_label}" if _handle_label else f"🔬 Post Analysis — {post_id_val}",
                 st.session_state["ai_post_result"],
                 accent="#818cf8",
                 margin_top=True,
