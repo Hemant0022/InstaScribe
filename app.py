@@ -44,7 +44,7 @@ try:
 except Exception:
     Groq = None
 
-favicon = Image.open("assets/favicon.png")
+favicon = Image.open("assets/favicon2.png")
 st.set_page_config(page_title="InstaScribe", page_icon=favicon,
                    layout="wide", initial_sidebar_state="expanded")
 
