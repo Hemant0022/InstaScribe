@@ -2464,6 +2464,8 @@ def _format_ai_response(text):
     close_list()
     return "\n".join(parts)
 
+
+
 def _render_ai_panel(title, body, accent="#4f7cff", margin_top=False):
     escaped_body = _format_ai_response(body)
     mt = "margin-top:12px;" if margin_top else ""
@@ -3653,7 +3655,7 @@ elif page == "AI Insights":
     with tab_post:
         st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         desc(
-            "<b>Post ID Analyser</b> — forensic breakdown of a <i>single post</i>. "
+            "<b>Post ID Analyser</b> — breakdown of a <i>single post</i>. "
             "How did it perform vs this creator's average? Was the sentiment strong? "
             "Did the hashtags pull their weight?"
         )
@@ -3765,8 +3767,14 @@ elif page == "AI Insights":
                 st.session_state["ai_post_result"] = err if err else answer
 
         if st.session_state["ai_post_result"]:
+            _handle_label = ""
+            _pr_check = ai_posts[ai_posts["Post_ID"].astype(str).str.strip().str.lower() == post_id_val.strip().lower()]
+            if len(_pr_check) > 0:
+                 _handle_label = str(_pr_check.iloc[0].get("Handle", ""))
+
+
             _render_ai_panel(
-                f"🔬 Post Forensics — {post_id_val}",
+                f"🔬 Post Forensics — {post_id_val}  ·  @{handle_of_post}" if handle_of_post else f"🔬 Post Forensics — {post_id_val}",
                 st.session_state["ai_post_result"],
                 accent="#818cf8",
                 margin_top=True,
