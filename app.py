@@ -13,6 +13,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib
+from PIL import Image
 import yaml
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -43,8 +44,8 @@ try:
 except Exception:
     Groq = None
 
-    
-st.set_page_config(page_title="InstaScribe", page_icon="📱",
+favicon = Image.open("assets/favicon.png")
+st.set_page_config(page_title="InstaScribe", page_icon=favicon,
                    layout="wide", initial_sidebar_state="expanded")
 
 AUTH_STORE_PATH = Path(__file__).with_name("auth_store.yaml")
