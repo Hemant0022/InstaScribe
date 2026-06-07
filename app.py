@@ -494,7 +494,7 @@ def render_subscription_page():
     for i, (plan_key, plan_data) in enumerate(PLANS.items()):
         with cols[i]:
             price_inr = plan_data["yearly_inr"] if billing_cycle == "yearly" else plan_data["monthly_inr"]
-            price_str = "Free" if price_inr == 0 else f"₨. {price_inr:.0f}/{billing_cycle[:1]}"
+            price_str = "Free" if price_inr == 0 else f"₹ {price_inr:.0f}/{billing_cycle[:1]}"
             is_current = plan_key == current_plan
             border_style = f"3px solid {plan_data['color']}" if is_current else f"1px solid {plan_data['color']}44"
 
@@ -598,6 +598,9 @@ def render_admin_revenue_tab():
     subs_df["created_at"] = pd.to_datetime(subs_df["created_at"], utc=True, errors="coerce")
     subs_df["started_at"] = pd.to_datetime(subs_df["started_at"], utc=True, errors="coerce")
     subs_df["Month"]      = subs_df["created_at"].dt.to_period("M").dt.to_timestamp()
+    # DB column is still amount_usd — rename it after loading
+    if "amount_usd" in subs_df.columns and "amount_inr" not in subs_df.columns:
+        subs_df = subs_df.rename(columns={"amount_usd": "amount_inr"})
     subs_df["amount_inr"] = pd.to_numeric(subs_df["amount_inr"], errors="coerce").fillna(0)
 
     active_df = subs_df[subs_df["status"] == "active"]
@@ -611,8 +614,8 @@ def render_admin_revenue_tab():
     churn_count = len(subs_df[subs_df["status"] == "cancelled"])
 
     k1, k2, k3, k4 = st.columns(4, gap="large")
-    k1.markdown(kpi("Total Revenue",    f"${total_rev:,.0f}",   "all-time · all plans",      "#4ade80","#22c55e",min(int(total_rev/100),100)), unsafe_allow_html=True)
-    k2.markdown(kpi("MRR",              f"${mrr_total:,.0f}",   "monthly recurring revenue", "#818cf8","#6366f1",70), unsafe_allow_html=True)
+    k1.markdown(kpi("Total Revenue",    f"₹{total_rev:,.0f}",   "all-time · all plans",      "#4ade80","#22c55e",min(int(total_rev/100),100)), unsafe_allow_html=True)
+    k2.markdown(kpi("MRR",              f"₹{mrr_total:,.0f}",   "monthly recurring revenue", "#818cf8","#6366f1",70), unsafe_allow_html=True)
     k3.markdown(kpi("Paying Subs",      str(paying_subs),       "active paid plans",         "#a855f7","#ec4899",min(paying_subs*20,100)), unsafe_allow_html=True)
     k4.markdown(kpi("Churned",          str(churn_count),       "cancelled subscriptions",   "#f87171","#ef4444",min(churn_count*15,100)), unsafe_allow_html=True)
 
