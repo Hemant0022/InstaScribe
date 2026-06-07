@@ -411,7 +411,7 @@ def _create_subscription(username_val, plan, billing_cycle):
             "plan":          plan,
             "status":        "active",
             "billing_cycle": billing_cycle,
-            "amount_inr":    float(amount),
+            "amount_usd":    float(amount),
             "started_at":    now.isoformat(),
             "renews_at":     renews_at.isoformat(),
             "payment_ref":   payment_ref,
