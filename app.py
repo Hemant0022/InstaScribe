@@ -48,6 +48,18 @@ favicon = Image.open("assets/favicon2.png")
 st.set_page_config(page_title="InstaScribe", page_icon=favicon,
                    layout="wide", initial_sidebar_state="expanded")
 
+import base64, io
+def _get_favicon_b64():
+    try:
+        img = Image.open("assets/favicon3.png")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+FAVICON_B64 = _get_favicon_b64()
+FAVICON_IMG = f'<img src="data:image/png;base64,{FAVICON_B64}" style="width:44px;height:44px;object-fit:cover;border-radius:12px;display:block;">'
+
 AUTH_STORE_PATH = Path(__file__).with_name("auth_store.yaml")
 
 
@@ -1096,11 +1108,13 @@ section[data-testid="stSidebar"] label {
   position: absolute; top: 0; left: 0; right: 0; height: 1px;
   background: linear-gradient(90deg, transparent, rgba(79,124,255,0.7), rgba(124,58,237,0.7), transparent);
 }
+# AFTER — line 1111
 .app-logo-icon {
-  width: 36px; height: 36px; border-radius: 10px;
-  background: linear-gradient(135deg,#4f7cff,#7c3aed);
+  width: 44px; height: 44px; border-radius: 12px;
+  background: transparent;                               ← no gradient, favicon has its own
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 18px; margin-right: 10px; vertical-align: middle;
+  overflow: hidden;                                      ← clips favicon to rounded corners
+  margin-right: 10px; vertical-align: middle;
 }
 .app-title { font-size: 1.2rem; font-weight: 700; color: #f4f7ff; vertical-align: middle; }
 .app-subtitle { font-size: 10px; color: #8ea0c7; text-transform: uppercase; letter-spacing: .12em; margin-top: 2px; }
@@ -2811,16 +2825,15 @@ leads_full, posts_full = load_data()
 # ── SIDEBAR ────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
-        '<div style="padding:.8rem 0 1.4rem">'
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
-        '<div style="width:32px;height:32px;border-radius:9px;'
-        'background:linear-gradient(135deg,#a855f7,#ec4899);'
-        'display:flex;align-items:center;justify-content:center;font-size:16px">📱</div>'
-        '<div>'
-        '<div style="font-size:1.05rem;font-weight:700;color:#000000">InstaScribe</div>'
-        '<div style="font-size:10px;color:#000000;text-transform:uppercase;'
-        'letter-spacing:.1em">Creator Intelligence</div>'
-        '</div></div></div>',
+        f'<div style="padding:.8rem 0 1.4rem">'
+        f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'
+        f'<img src="data:image/png;base64,{FAVICON_B64}" '
+        f'style="width:44px;height:44px;border-radius:12px;object-fit:cover;display:block;flex-shrink:0;">'
+        f'<div style="display:flex;flex-direction:column;gap:2px;">'
+        f'<div style="font-size:16px;font-weight:800;color:#1a1a2e;letter-spacing:.01em;line-height:1.2;">InstaScribe</div>'
+        f'<div style="font-size:12px;font-weight:600;color:#a855f7;text-transform:uppercase;letter-spacing:.12em;line-height:1.2;">Creator Intelligence</div>'
+        f'</div>'
+        f'</div></div>',
         unsafe_allow_html=True)
 
     st.markdown(
@@ -2915,12 +2928,12 @@ st.markdown(
     f'<div class="app-header-card">'
     f'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
     f'<div style="display:flex;align-items:center;gap:10px">'
-    f'<div class="app-logo-icon">📱</div>'
+    f'<div class="app-logo-icon">{FAVICON_IMG}</div>'
     f'<div>'
     f'<div class="app-title">InstaScribe</div>'
     f'<div class="app-subtitle">Creator Intelligence Platform</div>'
     f'</div></div>'
-    f'<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:#6b4fa0;'
+    f'<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:#6b4fa0;'
     f'border:1px solid #2d1555;padding:2px 10px;border-radius:20px;">'
     f'{"🔍 " if is_filtered else "📊 "}{len(leads):,} / {len(leads_full):,} records</span>'
     f'</div>'
@@ -4244,8 +4257,7 @@ elif page == "About":
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;">
         <div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#a855f7,#ec4899);display:flex;align-items:center;justify-content:center;font-size:20px">📱</div>
-            <div>
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#a855f7,#ec4899);display:flex;align-items:center;justify-content:center;">{FAVICON_IMG}</div>'            <div>
               <div style="font-size:1.5rem;font-weight:700;color:#f0e6ff">InstaScribe</div>
               <div style="font-size:10px;color:#6b4fa0;text-transform:uppercase;letter-spacing:.12em">Creator Intelligence Platform</div>
             </div>
