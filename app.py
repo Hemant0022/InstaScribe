@@ -30,6 +30,8 @@ from auth_supabase import (
     get_profile,
     supabase
 )
+from datetime import timezone as _tz
+
 
 # ── load .env for local development ───────────────────────────
 try:
@@ -2791,16 +2793,24 @@ if is_admin:
             st.info("No active sessions recorded.")
         else:
             sec(f"🖥️ Active Sessions — {len(sessions)} online")
+            def _to_ist(utc_str):
+                try:
+                    dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+                    ist = dt + timedelta(hours=5, minutes=30)
+                    return ist.strftime("%Y-%m-%d %H:%M:%S IST")
+                except Exception:
+                    return utc_str
+
             sess_df = pd.DataFrame([
-                {
-                    "Username": row["username"],
-                    "Name": row["name"],
-                    "Role": row["role"],
-                    "Started At": row["started_at"],
-                    "Last Seen": row["last_seen"],
-                }
-                for row in sessions
-            ])
+            {
+                "Username": row["username"],
+                "Name": row["name"],
+                "Role": row["role"],
+                "Started At": _to_ist(row["started_at"]),
+                "Last Seen": _to_ist(row["last_seen"]),
+            }
+            for row in sessions
+        ])
             st.dataframe(sess_df, use_container_width=True, hide_index=True)
 
             st.markdown(
