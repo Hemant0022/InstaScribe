@@ -310,10 +310,8 @@ PLANS = {
         "color2":      "#6366f1",
         "icon":        "🌱",
         "features": [
-            "Executive Overview dashboard",
-            "Up to 50 influencer records",
-            "Basic lead scoring",
-            "Community support",
+            "Core dashboards & lead scoring",
+            "Community support via email"
         ],
         "limits": "50 records · no AI",
     },
@@ -326,11 +324,7 @@ PLANS = {
         "icon":        "⚡",
         "features": [
             "All Free features",
-            "Unlimited influencer records",
-            "AI Insights (Groq-powered)",
-            "Post Analytics & Inspector",
-            "Lead Intelligence deep-dive",
-            "Priority email support",
+            "Full AI Insights — all 6 tabs unlocked",
         ],
         "limits": "Unlimited · AI included",
     },
@@ -343,10 +337,7 @@ PLANS = {
         "icon":        "🏢",
         "features": [
             "Everything in Pro",
-            "Team seat management",
-            "Custom CSV uploads",
-            "Dedicated Slack support",
-            "SLA guarantee",
+            "Dedicated priority support & SLA",
         ],
         "limits": "Team · SLA · Dedicated",
     },
@@ -750,7 +741,7 @@ def render_admin_revenue_tab():
                      if c in display_subs.columns]
     display_subs = display_subs[show_sub_cols].rename(columns={
         "username": "User", "plan": "Plan", "status": "Status",
-        "billing_cycle": "Cycle", "amount_inr": "Amount (USD)",
+        "billing_cycle": "Cycle", "amount_inr": "Amount (INR)",
         "started_at": "Started", "created_at": "Created At",
         "payment_ref": "Payment Ref",
     })
@@ -2434,12 +2425,14 @@ def _format_ai_response(text):
     FS_INLINE_H = "16px"
  
     def escape_and_inline_bold(raw_text):
-        result = re.sub(r'\*\*(.+?)\*\*', lambda m: f'<strong>{html.escape(m.group(1))}</strong>', raw_text)
-        parts_clean = re.split(r'(<strong>.*?</strong>)', result)
-        return ''.join(
-        p if p.startswith('<strong>') else html.escape(p)
-        for p in parts_clean
-    )
+        converted = re.sub(
+            r'\*\*(.+?)\*\*',
+            lambda m: f'\x00STRONG\x00{m.group(1)}\x00/STRONG\x00',
+            raw_text
+        )
+        escaped = html.escape(converted)
+        escaped = escaped.replace('\x00STRONG\x00', '<strong>').replace('\x00/STRONG\x00', '</strong>')
+        return escaped
  
     def close_list():
         nonlocal in_list
