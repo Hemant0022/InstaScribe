@@ -30,8 +30,6 @@ from auth_supabase import (
     get_profile,
     supabase
 )
-from datetime import timezone as _tz
-
 
 # ── load .env for local development ───────────────────────────
 try:
@@ -53,14 +51,14 @@ st.set_page_config(page_title="InstaScribe", page_icon=favicon,
 import base64, io
 def _get_favicon_b64():
     try:
-        img = Image.open("assets/favicon3.png")
+        img = Image.open("assets/favicon.png")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return base64.b64encode(buf.getvalue()).decode()
     except Exception:
         return ""
 FAVICON_B64 = _get_favicon_b64()
-FAVICON_IMG = f'<img src="data:image/png;base64,{FAVICON_B64}" style="width:44px;height:44px;object-fit:cover;border-radius:12px;display:block;">'
+FAVICON_IMG = f'<img src="data:image/png;base64,{FAVICON_B64}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;">'
 
 AUTH_STORE_PATH = Path(__file__).with_name("auth_store.yaml")
 
@@ -310,8 +308,10 @@ PLANS = {
         "color2":      "#6366f1",
         "icon":        "🌱",
         "features": [
-            "Core dashboards & lead scoring",
-            "Community support via email"
+            "Executive Overview dashboard",
+            "Up to 50 influencer records",
+            "Basic lead scoring",
+            "Community support",
         ],
         "limits": "50 records · no AI",
     },
@@ -324,7 +324,11 @@ PLANS = {
         "icon":        "⚡",
         "features": [
             "All Free features",
-            "Full AI Insights — all 6 tabs unlocked",
+            "Unlimited influencer records",
+            "AI Insights (Groq-powered)",
+            "Post Analytics & Inspector",
+            "Lead Intelligence deep-dive",
+            "Priority email support",
         ],
         "limits": "Unlimited · AI included",
     },
@@ -337,7 +341,10 @@ PLANS = {
         "icon":        "🏢",
         "features": [
             "Everything in Pro",
-            "Dedicated priority support & SLA",
+            "Team seat management",
+            "Custom CSV uploads",
+            "Dedicated Slack support",
+            "SLA guarantee",
         ],
         "limits": "Team · SLA · Dedicated",
     },
@@ -404,7 +411,7 @@ def _create_subscription(username_val, plan, billing_cycle):
             "plan":          plan,
             "status":        "active",
             "billing_cycle": billing_cycle,
-            "amount_usd":    float(amount),
+            "amount_inr":    float(amount),
             "started_at":    now.isoformat(),
             "renews_at":     renews_at.isoformat(),
             "payment_ref":   payment_ref,
@@ -487,7 +494,7 @@ def render_subscription_page():
     for i, (plan_key, plan_data) in enumerate(PLANS.items()):
         with cols[i]:
             price_inr = plan_data["yearly_inr"] if billing_cycle == "yearly" else plan_data["monthly_inr"]
-            price_str = "Free" if price_inr == 0 else f"₹ {price_inr:.0f}/{billing_cycle[:1]}"
+            price_str = "Free" if price_inr == 0 else f"₨. {price_inr:.0f}/{billing_cycle[:1]}"
             is_current = plan_key == current_plan
             border_style = f"3px solid {plan_data['color']}" if is_current else f"1px solid {plan_data['color']}44"
 
@@ -591,9 +598,6 @@ def render_admin_revenue_tab():
     subs_df["created_at"] = pd.to_datetime(subs_df["created_at"], utc=True, errors="coerce")
     subs_df["started_at"] = pd.to_datetime(subs_df["started_at"], utc=True, errors="coerce")
     subs_df["Month"]      = subs_df["created_at"].dt.to_period("M").dt.to_timestamp()
-    # DB column is still amount_usd — rename it after loading
-    if "amount_usd" in subs_df.columns and "amount_inr" not in subs_df.columns:
-        subs_df = subs_df.rename(columns={"amount_usd": "amount_inr"})
     subs_df["amount_inr"] = pd.to_numeric(subs_df["amount_inr"], errors="coerce").fillna(0)
 
     active_df = subs_df[subs_df["status"] == "active"]
@@ -607,8 +611,8 @@ def render_admin_revenue_tab():
     churn_count = len(subs_df[subs_df["status"] == "cancelled"])
 
     k1, k2, k3, k4 = st.columns(4, gap="large")
-    k1.markdown(kpi("Total Revenue",    f"₹{total_rev:,.0f}",   "all-time · all plans",      "#4ade80","#22c55e",min(int(total_rev/100),100)), unsafe_allow_html=True)
-    k2.markdown(kpi("MRR",              f"₹{mrr_total:,.0f}",   "monthly recurring revenue", "#818cf8","#6366f1",70), unsafe_allow_html=True)
+    k1.markdown(kpi("Total Revenue",    f"${total_rev:,.0f}",   "all-time · all plans",      "#4ade80","#22c55e",min(int(total_rev/100),100)), unsafe_allow_html=True)
+    k2.markdown(kpi("MRR",              f"${mrr_total:,.0f}",   "monthly recurring revenue", "#818cf8","#6366f1",70), unsafe_allow_html=True)
     k3.markdown(kpi("Paying Subs",      str(paying_subs),       "active paid plans",         "#a855f7","#ec4899",min(paying_subs*20,100)), unsafe_allow_html=True)
     k4.markdown(kpi("Churned",          str(churn_count),       "cancelled subscriptions",   "#f87171","#ef4444",min(churn_count*15,100)), unsafe_allow_html=True)
 
@@ -741,7 +745,7 @@ def render_admin_revenue_tab():
                      if c in display_subs.columns]
     display_subs = display_subs[show_sub_cols].rename(columns={
         "username": "User", "plan": "Plan", "status": "Status",
-        "billing_cycle": "Cycle", "amount_inr": "Amount (INR)",
+        "billing_cycle": "Cycle", "amount_inr": "Amount (USD)",
         "started_at": "Started", "created_at": "Created At",
         "payment_ref": "Payment Ref",
     })
@@ -1104,13 +1108,11 @@ section[data-testid="stSidebar"] label {
   position: absolute; top: 0; left: 0; right: 0; height: 1px;
   background: linear-gradient(90deg, transparent, rgba(79,124,255,0.7), rgba(124,58,237,0.7), transparent);
 }
-# AFTER — line 1111
 .app-logo-icon {
-  width: 44px; height: 44px; border-radius: 12px;
-  background: transparent;                               ← no gradient, favicon has its own
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg,#4f7cff,#7c3aed);
   display: inline-flex; align-items: center; justify-content: center;
-  overflow: hidden;                                      ← clips favicon to rounded corners
-  margin-right: 10px; vertical-align: middle;
+  font-size: 18px; margin-right: 10px; vertical-align: middle;
 }
 .app-title { font-size: 1.2rem; font-weight: 700; color: #f4f7ff; vertical-align: middle; }
 .app-subtitle { font-size: 10px; color: #8ea0c7; text-transform: uppercase; letter-spacing: .12em; margin-top: 2px; }
@@ -1780,24 +1782,46 @@ def _system_summary_context(leads_df, posts_df):
         quality_counts = leads_df["Lead_Quality"].value_counts(dropna=False).to_dict()
         lines.append("Lead quality split: " + ", ".join(f"{k}: {v}" for k, v in quality_counts.items()))
     if "Category_Name" in leads_df.columns and len(leads_df) > 0:
-        agg_cols = {"Count": ("Handle", "count")}
-        if "Engagement_Rate" in leads_df.columns:
-            agg_cols["Avg_Engagement_Rate"] = ("Engagement_Rate", "mean")
-        if "Lead_Score" in leads_df.columns:
-            agg_cols["Avg_Lead_Score"] = ("Lead_Score", "mean")
-        if "Follower_Count" in leads_df.columns:
-            agg_cols["Avg_Followers"] = ("Follower_Count", "mean")
-        if "Lead_Quality" in leads_df.columns:
-            agg_cols["High_Quality_Leads"] = ("Lead_Quality", lambda x: (x == "high").sum())
-        cat_summary = (
-            leads_df.groupby("Category_Name")
-            .agg(**agg_cols)
-            .round(2)
-            .sort_values("Avg_Engagement_Rate" if "Avg_Engagement_Rate" in agg_cols else "Count", ascending=False)
+        category_counts = leads_df["Category_Name"].value_counts().head(5)
+        lines.append("Top categories: " + ", ".join(f"{idx} ({val})" for idx, val in category_counts.items()))
+    if "Lead_Score" in leads_df.columns and len(leads_df) > 0:
+        lines.append(f"Average lead score: {leads_df['Lead_Score'].mean():.1f}/100")
+    if "Engagement_Rate" in leads_df.columns and len(leads_df) > 0:
+        lines.append(f"Average engagement rate: {leads_df['Engagement_Rate'].mean():.2f}%")
+
+    # Full ranked leads table — ALL influencers so AI can answer any question
+    if len(leads_df) > 0:
+        lead_cols = [c for c in [
+            "Handle", "Category_Name", "Follower_Count",
+            "Engagement_Rate", "Lead_Score", "Lead_Quality", "Avg_Sentiment",
+        ] if c in leads_df.columns]
+        ranked = leads_df.copy()
+        if "Lead_Score" in ranked.columns:
+            ranked = ranked.sort_values("Lead_Score", ascending=False)
+        ranked = ranked[lead_cols]
+        ranked.insert(0, "Rank", range(1, len(ranked) + 1))
+        lines.append("\nAll influencers ranked by Lead Score:\n" + ranked.to_string(index=False))
+
+    # All handles ranked by total engagement from posts
+    if "Handle" in posts_df.columns and len(posts_df) > 0 and "Engagement" in posts_df.columns:
+        top_handles = (
+            posts_df.groupby("Handle")["Engagement"]
+            .sum()
+            .sort_values(ascending=False)
             .reset_index()
+            .rename(columns={"Engagement": "Total_Engagement"})
         )
-        lines.append("\nCategory breakdown (sorted by Avg Engagement Rate):\n" + cat_summary.to_string(index=False))
+        top_handles.insert(0, "Rank", range(1, len(top_handles) + 1))
+        lines.append("\nAll handles ranked by total engagement:\n" + top_handles.to_string(index=False))
+
     return "\n".join(lines)
+
+
+def _safe_context(context_text, max_chars=12000):
+    """Trim context to max_chars if needed, keeping the most relevant top rows."""
+    if len(context_text) <= max_chars:
+        return context_text
+    return context_text[:max_chars] + "\n\n[... data truncated to fit token limit ...]"
 
 
 def _build_ai_context(question, leads_df, posts_df):
@@ -2433,14 +2457,12 @@ def _format_ai_response(text):
     FS_INLINE_H = "16px"
  
     def escape_and_inline_bold(raw_text):
-        converted = re.sub(
-            r'\*\*(.+?)\*\*',
-            lambda m: f'\x00STRONG\x00{m.group(1)}\x00/STRONG\x00',
-            raw_text
-        )
-        escaped = html.escape(converted)
-        escaped = escaped.replace('\x00STRONG\x00', '<strong>').replace('\x00/STRONG\x00', '</strong>')
-        return escaped
+        result = re.sub(r'\*\*(.+?)\*\*', lambda m: f'<strong>{html.escape(m.group(1))}</strong>', raw_text)
+        parts_clean = re.split(r'(<strong>.*?</strong>)', result)
+        return ''.join(
+        p if p.startswith('<strong>') else html.escape(p)
+        for p in parts_clean
+    )
  
     def close_list():
         nonlocal in_list
@@ -2794,24 +2816,16 @@ if is_admin:
             st.info("No active sessions recorded.")
         else:
             sec(f"🖥️ Active Sessions — {len(sessions)} online")
-            def _to_ist(utc_str):
-                try:
-                    dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
-                    ist = dt + timedelta(hours=5, minutes=30)
-                    return ist.strftime("%Y-%m-%d %H:%M:%S IST")
-                except Exception:
-                    return utc_str
-
             sess_df = pd.DataFrame([
-            {
-                "Username": row["username"],
-                "Name": row["name"],
-                "Role": row["role"],
-                "Started At": _to_ist(row["started_at"]),
-                "Last Seen": _to_ist(row["last_seen"]),
-            }
-            for row in sessions
-        ])
+                {
+                    "Username": row["username"],
+                    "Name": row["name"],
+                    "Role": row["role"],
+                    "Started At": row["started_at"],
+                    "Last Seen": row["last_seen"],
+                }
+                for row in sessions
+            ])
             st.dataframe(sess_df, use_container_width=True, hide_index=True)
 
             st.markdown(
@@ -2839,15 +2853,14 @@ leads_full, posts_full = load_data()
 # ── SIDEBAR ────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
-        f'<div style="padding:.8rem 0 1.4rem">'
-        f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'
-        f'<img src="data:image/png;base64,{FAVICON_B64}" '
-        f'style="width:44px;height:44px;border-radius:12px;object-fit:cover;display:block;flex-shrink:0;">'
-        f'<div style="display:flex;flex-direction:column;gap:2px;">'
-        f'<div style="font-size:16px;font-weight:800;color:#1a1a2e;letter-spacing:.01em;line-height:1.2;">InstaScribe</div>'
-        f'<div style="font-size:12px;font-weight:600;color:#a855f7;text-transform:uppercase;letter-spacing:.12em;line-height:1.2;">Creator Intelligence</div>'
-        f'</div>'
-        f'</div></div>',
+        '<div style="padding:.8rem 0 1.4rem">'
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+        '<div style="width:32px;height:32px;border-radius:9px;'
+        'background:linear-gradient(135deg,#a855f7,#ec4899);'
+        'display:flex;align-items:center;justify-content:center;">{FAVICON_IMG}</div>'
+        '<div style="font-size:10px;color:#000000;text-transform:uppercase;'
+        'letter-spacing:.1em">Creator Intelligence</div>'
+        '</div></div></div>',
         unsafe_allow_html=True)
 
     st.markdown(
@@ -2947,7 +2960,7 @@ st.markdown(
     f'<div class="app-title">InstaScribe</div>'
     f'<div class="app-subtitle">Creator Intelligence Platform</div>'
     f'</div></div>'
-    f'<span style="font-family:\'DM Mono\',monospace;font-size:12px;color:#6b4fa0;'
+    f'<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:#6b4fa0;'
     f'border:1px solid #2d1555;padding:2px 10px;border-radius:20px;">'
     f'{"🔍 " if is_filtered else "📊 "}{len(leads):,} / {len(leads_full):,} records</span>'
     f'</div>'
@@ -3637,7 +3650,6 @@ elif page == "AI Insights":
             role    = msg["role"]
             content = str(msg["content"])
             if role == "user":
-                # LINE 3623–3628
                 st.markdown(
                     f'<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">'
                     f'<div style="background:#7c3aed;'
@@ -3670,25 +3682,89 @@ elif page == "AI Insights":
         if send_clicked and chat_input.strip():
             user_msg = chat_input.strip()
             st.session_state["ai_chat_history"].append({"role":"user","content":user_msg})
-            context_text, _, _ = _build_ai_context(user_msg, ai_leads, ai_posts)
-            history_for_groq   = st.session_state["ai_chat_history"][-8:]
-            sys_p = ("You are InstaScribe AI, an expert influencer intelligence assistant. "
-                     "Answer using ONLY the dataset context. Be concise and actionable. "
-                     "Use bullet points where helpful.")
+
+            # Build rich context for chat tab only
+            q_lower = user_msg.lower()
+            n_match = re.search(r'\btop[- ]?(\d+)\b', q_lower)
+            n_count = int(n_match.group(1)) if n_match else 20
+            cat_filter = None
+            if "Category_Name" in ai_leads.columns:
+                for _cat in ai_leads["Category_Name"].dropna().unique():
+                    if str(_cat).lower() in q_lower:
+                        cat_filter = _cat; break
+            quality_filter = None
+            if any(kw in q_lower for kw in ["high lead","high quality","high priority"]):
+                quality_filter = "high"
+            elif any(kw in q_lower for kw in ["medium lead","medium quality"]):
+                quality_filter = "medium"
+            elif any(kw in q_lower for kw in ["low lead","low quality"]):
+                quality_filter = "low"
+
+            chat_ctx_blocks = []
+            if len(ai_leads) > 0:
+                lead_cols = [c for c in [
+                    "Handle","Category_Name","Follower_Count",
+                    "Engagement_Rate","Lead_Score","Lead_Quality","Avg_Sentiment",
+                ] if c in ai_leads.columns]
+                subset_df = ai_leads.copy()
+                if cat_filter and "Category_Name" in subset_df.columns:
+                    subset_df = subset_df[
+                        subset_df["Category_Name"].astype(str).str.lower() == str(cat_filter).lower()]
+                if quality_filter and "Lead_Quality" in subset_df.columns:
+                    subset_df = subset_df[subset_df["Lead_Quality"] == quality_filter]
+                if "Lead_Score" in subset_df.columns:
+                    subset_df = subset_df.sort_values("Lead_Score", ascending=False)
+                chat_ctx_blocks.append(
+                    f"Influencer table (top {n_count}):\n" +
+                    subset_df[lead_cols].head(n_count).to_string(index=False))
+            if len(ai_posts) > 0 and "Handle" in ai_posts.columns and "Post_ID" in ai_posts.columns:
+                post_counts = (
+                    ai_posts.groupby("Handle")["Post_ID"].nunique().reset_index()
+                    .rename(columns={"Post_ID":"Post_Count"})
+                    .sort_values("Post_Count", ascending=False))
+                chat_ctx_blocks.append("Post count per handle:\n" + post_counts.to_string(index=False))
+            if "Category_Name" in ai_leads.columns and len(ai_leads) > 0:
+                cat_summary = ai_leads.groupby("Category_Name").agg(
+                    Count=("Handle","count"),
+                    Avg_Lead_Score=("Lead_Score","mean"),
+                    Avg_ER=("Engagement_Rate","mean"),
+                    High_Leads=("Lead_Quality", lambda x: (x=="high").sum()),
+                ).round(2).to_string()
+                chat_ctx_blocks.append(f"Category summary:\n{cat_summary}")
+            _, p_matches, h_matches = _build_ai_context(user_msg, ai_leads, ai_posts)
+            if h_matches:
+                chat_ctx_blocks.append("Matched handle details:\n" + "\n\n".join(
+                    _profile_context_for_handle(h, ai_leads, ai_posts) for h in h_matches))
+            if p_matches:
+                chat_ctx_blocks.append("Matched post details:\n" + "\n\n".join(
+                    _profile_context_for_post(p, ai_posts) for p in p_matches))
+            context_text = _safe_context("\n\n---\n\n".join(chat_ctx_blocks))
+
+            history_for_groq = st.session_state["ai_chat_history"][-8:]
+            sys_p = (
+                "You are InstaScribe AI, an expert influencer intelligence assistant. "
+                "You have the COMPLETE dataset in the tables below. "
+                "Answer every question using the provided tables. "
+                "NEVER say data is not available - read the tables carefully. "
+                "For top-N lists, return a numbered list with exact handles and metrics. "
+                "For category questions, use the category summary table. "
+                "For post count questions, use the post count per handle table. "
+                "Be concise, specific, and use exact numbers from the data."
+            )
             messages = [{"role":"system","content":sys_p}]
             for h in history_for_groq[:-1]:
                 messages.append({"role":h["role"],"content":h["content"]})
             messages.append({"role":"user","content":f"{user_msg}\n\nDataset context:\n{context_text}"})
             client = _groq_client()
             if client is None:
-                answer = f"⚠️ Groq not configured.\n\nDataset context:\n{context_text}"
+                answer = f"Warning: Groq not configured."
             else:
                 try:
                     completion = client.chat.completions.create(
                         model=_groq_model_name(), temperature=0.35, max_tokens=1024, messages=messages)
                     answer = completion.choices[0].message.content
                 except Exception as exc:
-                    answer = f"Error calling Groq: {exc}"
+                    answer = f"Groq error: {exc}"
             st.session_state["ai_chat_history"].append({"role":"assistant","content":answer})
             st.rerun()
 
@@ -3703,9 +3779,33 @@ elif page == "AI Insights":
         for i, qp in enumerate(quick_prompts):
             if qp_cols[i].button(qp, key=f"qp_{i}", use_container_width=True):
                 st.session_state["ai_chat_history"].append({"role":"user","content":qp})
-                ctx, _, _ = _build_ai_context(qp, ai_leads, ai_posts)
-                sys_p = "You are InstaScribe AI. Answer using only the dataset context. Be concise."
-                answer, err = _call_groq(sys_p, f"{qp}\n\nDataset context:\n{ctx}")
+                qp_lower = qp.lower()
+                qp_ctx_blocks = []
+                if len(ai_leads) > 0:
+                    lead_cols = [c for c in [
+                        "Handle","Category_Name","Follower_Count",
+                        "Engagement_Rate","Lead_Score","Lead_Quality","Avg_Sentiment",
+                    ] if c in ai_leads.columns]
+                    qp_subset = ai_leads.copy()
+                    if "Lead_Score" in qp_subset.columns:
+                        qp_subset = qp_subset.sort_values("Lead_Score", ascending=False)
+                    qp_ctx_blocks.append(
+                        "Influencer table (top 20):\n" +
+                        qp_subset[lead_cols].head(20).to_string(index=False))
+                if "Category_Name" in ai_leads.columns and len(ai_leads) > 0:
+                    cat_sum = ai_leads.groupby("Category_Name").agg(
+                        Count=("Handle","count"),
+                        Avg_Lead_Score=("Lead_Score","mean"),
+                        Avg_ER=("Engagement_Rate","mean"),
+                        High_Leads=("Lead_Quality", lambda x: (x=="high").sum()),
+                    ).round(2).to_string()
+                    qp_ctx_blocks.append(f"Category summary:\n{cat_sum}")
+                qp_ctx = "\n\n---\n\n".join(qp_ctx_blocks)
+                sys_p = (
+                    "You are InstaScribe AI. Answer using the dataset tables provided. "
+                    "NEVER say data is unavailable - it is in the tables. Be concise and specific."
+                )
+                answer, err = _call_groq(sys_p, f"{qp}\n\nDataset context:\n{qp_ctx}")
                 st.session_state["ai_chat_history"].append({"role":"assistant","content":err if err else answer})
                 st.rerun()
 
@@ -4116,9 +4216,7 @@ elif page == "AI Insights":
                 st.warning("Please enter a question first.")
             else:
                 question = custom_q.strip()
-                ctx, p_matches, h_matches = _build_ai_context(question, ai_leads, ai_posts)
                 q_lower = question.lower()
-                extra_blocks = []
 
                 # Detect top-N request
                 n_match = re.search(r'\btop[- ]?(\d+)\b', q_lower)
@@ -4141,56 +4239,82 @@ elif page == "AI Insights":
                 elif any(kw in q_lower for kw in ["low lead","low quality"]):
                     quality_filter = "low"
 
-                # Build the requested subset for list questions
-                subset_df = ai_leads.copy()
-                if cat_filter and "Category_Name" in subset_df.columns:
-                    subset_df = subset_df[
-                        subset_df["Category_Name"].astype(str).str.lower() == str(cat_filter).lower()
-                    ]
-                if quality_filter and "Lead_Quality" in subset_df.columns:
-                    subset_df = subset_df[subset_df["Lead_Quality"] == quality_filter]
-                if "Lead_Score" in subset_df.columns:
-                    subset_df = subset_df.nlargest(n_count, "Lead_Score")
+                # Build smart context - only what the question needs
+                custom_ctx_blocks = []
 
-                show_cols = [c for c in [
-                    "Handle","Category_Name","Lead_Score","Lead_Quality",
-                    "Follower_Count","Engagement_Rate","Avg_Sentiment","Action",
-                ] if c in subset_df.columns]
-                if len(subset_df) > 0:
-                    tbl_str = subset_df[show_cols].to_string(index=False)
-                    filter_desc = []
-                    if cat_filter:     filter_desc.append(f"category={cat_filter}")
-                    if quality_filter: filter_desc.append(f"quality={quality_filter}")
-                    label = f"Top {n_count} influencers" + (
-                        f" ({', '.join(filter_desc)})" if filter_desc else ""
+                # 1. Filtered + sorted leads table (max 50 rows to stay within token limit)
+                if len(ai_leads) > 0:
+                    lead_cols = [c for c in [
+                        "Handle", "Category_Name", "Follower_Count",
+                        "Engagement_Rate", "Lead_Score", "Lead_Quality", "Avg_Sentiment",
+                    ] if c in ai_leads.columns]
+                    subset_df = ai_leads.copy()
+                    if cat_filter and "Category_Name" in subset_df.columns:
+                        subset_df = subset_df[
+                            subset_df["Category_Name"].astype(str).str.lower() == str(cat_filter).lower()
+                        ]
+                    if quality_filter and "Lead_Quality" in subset_df.columns:
+                        subset_df = subset_df[subset_df["Lead_Quality"] == quality_filter]
+                    if "Lead_Score" in subset_df.columns:
+                        subset_df = subset_df.sort_values("Lead_Score", ascending=False)
+                    custom_ctx_blocks.append(
+                        f"Influencer table (top {n_count}, filtered as needed):\n" +
+                        subset_df[lead_cols].head(n_count).to_string(index=False)
                     )
-                    extra_blocks.append(f"{label}:\n{tbl_str}")
 
-                # Inject category summary when relevant
-                if "category" in q_lower and "Category_Name" in ai_leads.columns:
+                # 2. Post count per handle (compact)
+                if len(ai_posts) > 0 and "Handle" in ai_posts.columns and "Post_ID" in ai_posts.columns:
+                    post_counts = (
+                        ai_posts.groupby("Handle")["Post_ID"]
+                        .nunique().reset_index()
+                        .rename(columns={"Post_ID": "Post_Count"})
+                        .sort_values("Post_Count", ascending=False)
+                    )
+                    custom_ctx_blocks.append(
+                        "Post count per handle:\n" + post_counts.to_string(index=False)
+                    )
+
+                # 3. Category summary (always compact - just aggregates)
+                if "Category_Name" in ai_leads.columns and len(ai_leads) > 0:
                     cat_summary = (
                         ai_leads.groupby("Category_Name").agg(
-                            Count=("Handle","count"),
-                            Avg_Lead_Score=("Lead_Score","mean"),
-                            Avg_ER=("Engagement_Rate","mean"),
-                            High_Leads=("Lead_Quality", lambda x: (x=="high").sum()),
+                            Count=("Handle", "count"),
+                            Avg_Lead_Score=("Lead_Score", "mean"),
+                            Avg_ER=("Engagement_Rate", "mean"),
+                            High_Leads=("Lead_Quality", lambda x: (x == "high").sum()),
                         ).round(2).to_string()
                     )
-                    extra_blocks.append(f"Category summary:\n{cat_summary}")
+                    custom_ctx_blocks.append(f"Category summary:\n{cat_summary}")
 
-                full_context = ctx
-                if extra_blocks:
-                    full_context += "\n\n---\n\n" + "\n\n---\n\n".join(extra_blocks)
+                # 4. Specific handle/post profile if mentioned by name
+                _, p_matches, h_matches = _build_ai_context(question, ai_leads, ai_posts)
+                if h_matches:
+                    custom_ctx_blocks.append(
+                        "Matched handle details:\n" + "\n\n".join(
+                            _profile_context_for_handle(h, ai_leads, ai_posts) for h in h_matches
+                        )
+                    )
+                if p_matches:
+                    custom_ctx_blocks.append(
+                        "Matched post details:\n" + "\n\n".join(
+                            _profile_context_for_post(p, ai_posts) for p in p_matches
+                        )
+                    )
+
+                full_context = _safe_context("\n\n---\n\n".join(custom_ctx_blocks))
 
                 sys_p = (
                     "You are InstaScribe AI, an expert influencer marketing analyst. "
-                    "Answer the user's question using ONLY the dataset context and tables provided. "
-                    "When asked for a list or top-N, output a clear numbered list "
-                    "with the exact handles, scores, and metrics from the supplied table. "
-                    "When asked to compare categories, use the category summary table. "
-                    "When asked to generate an email or copy, write it in full. "
-                    "Be specific, use exact numbers, and be actionable. "
-                    "If information is not in the dataset, say so clearly."
+                    "You have the dataset in the tables below with handles, categories, "
+                    "follower counts, engagement rates, lead scores, lead quality, and post counts. "
+                    "Answer every question using ONLY the provided tables. "
+                    "NEVER say data is not available - read the tables carefully. "
+                    "For top-N lists, return a numbered list with exact handles and metrics. "
+                    "For category comparisons, use the category summary table. "
+                    "For post counts, use the post count per handle table. "
+                    "For specific handle metrics, find them in the influencer table. "
+                    "For outreach emails or copy, write them in full. "
+                    "Be specific, use exact numbers, and be actionable."
                 )
                 answer, err = _call_groq(
                     sys_p,
