@@ -2263,6 +2263,17 @@ div[data-testid="stButton"] > button:hover,
                 unsafe_allow_html=True,
             )
             submitted = st.form_submit_button("LOGIN")
+            if login_mode == "User":
+                st.markdown(
+                    """
+<div style="margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.16); color: #334155; font-size: 0.92rem; line-height: 1.5;">
+    <strong>Sample user login</strong><br>
+    Username: <code>User123</code><br>
+    Password: <code>User@123</code>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
 
         if submitted:
             username_found, user_record = _find_user_by_identifier(login_id)
